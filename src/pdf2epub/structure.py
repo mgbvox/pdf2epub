@@ -68,17 +68,16 @@ class StructureBuilder:
 
     def build(self) -> Document:
         per_page = [self._entries(lay) for lay in self.layouts]
+        # rows split into several cells *within one column* (author blocks, aligned lists);
+        # rows merely split by a column gutter are ordinary text lines
         self._grid_rows: dict[int, set[int]] = {}
-        for entries in per_page:
-            seen: dict[int, int] = {}
+        for lay, entries in zip(self.layouts, per_page):
+            cells: dict[tuple[int, tuple[float, float]], int] = {}
             for e in entries:
                 if e.line is not None:
-                    seen[e.line.row_id] = seen.get(e.line.row_id, 0) + 1
-            if entries and entries[0].line is not None:
-                pg = entries[0].line.page
-            else:
-                pg = next((e.line.page for e in entries if e.line is not None), -1)
-            self._grid_rows[pg] = {rid for rid, k in seen.items() if k > 1}
+                    key = (e.line.row_id, column_of(e.line.box, lay.columns))
+                    cells[key] = cells.get(key, 0) + 1
+            self._grid_rows[lay.page] = {rid for (rid, _), k in cells.items() if k > 1}
         for lay, entries in zip(self.layouts, per_page):
             self._frames(lay, entries)
         self._detect_headings(per_page)
@@ -361,8 +360,6 @@ class StructureBuilder:
                         after_equation = False
                     continue
                 line = e.line
-                if e.heading and not e.title:
-                    self._front_matter = False
                 if e.title or e.heading:
                     if cur is not None and cur.para.kind in ("heading", "title") and cur.para.level == e.heading and (
                         cur.last.page == line.page and line.core[1] - cur.last.core[3] < 0.6 * line.size
@@ -371,6 +368,8 @@ class StructureBuilder:
                         cur.last = line
                         continue
                     close()
+                    if e.heading and not e.title:
+                        self._front_matter = False
                     kind = "title" if e.title else "heading"
                     para = Paragraph(page=line.page, box=line.box, lines=[line], kind=kind, level=e.heading)
                     cur = _Open(para, line)

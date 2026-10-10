@@ -223,3 +223,6 @@ __marimo__/
 *.epub
 debug/
 .venv/
+
+# converted books
+output/

@@ -813,7 +813,7 @@ class PageAnalyzer:
         for rid, parts in rows.items():
             box = G.union(p.box for p in parts)
             f = next((f for f in frames if G.fraction_inside(box, G.expand(f.box, 2)) > 0.5), None)
-            if f is not None and G.width(box) >= 0.35 * G.width(f.box):
+            if f is not None and (G.width(box) >= 0.35 * G.width(f.box) or box[0] - f.box[0] < 2 * self.body):
                 wide += 1
         return wide >= 0.6 * len(rows)
 
