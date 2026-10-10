@@ -12,7 +12,6 @@ Footnotes are separated out so they can become pop-up notes.
 from __future__ import annotations
 
 import re
-import statistics
 from collections import Counter
 from dataclasses import dataclass, field
 
@@ -636,7 +635,7 @@ class PageAnalyzer:
 
     # -- caption driven regions ------------------------------------------
     def region_for_caption(self, cap: dict, clusters: list[Cluster], tables: list[Region]) -> None:
-        cbox = cap["box"]
+        cap["box"]
         reg = None
         if cap.get("algorithm"):
             reg = self._algorithm_region(cap)
