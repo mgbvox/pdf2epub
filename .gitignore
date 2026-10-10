@@ -226,3 +226,4 @@ debug/
 
 # converted books
 output/
+!demo/*.epub
