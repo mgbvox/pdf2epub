@@ -276,9 +276,12 @@ def build_rows(frags: list[Fragment], page_index: int) -> list[Row]:
             # horizontal relationship with the row's fragments
             near = False
             overlapping_same_level = False
+            same_baseline = abs(shift) <= 0.08 * rs
             for rf in r["frags"]:
                 gap = G.h_gap(f.box, rf.box)
-                if gap < 0.75 * rs:
+                # small caps / mixed sizes on one baseline may sit a word space or a
+                # section-number gap away; scripts must hug their base
+                if gap < (2.0 if same_baseline else 0.75) * rs:
                     near = True
                 if ratio > 0.88 and abs(f.baseline - rf.baseline) < 0.2 * rs:
                     ov = G.h_overlap(f.main_box, rf.main_box)

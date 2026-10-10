@@ -204,6 +204,9 @@ class StructureBuilder:
                     continue
                 key = _style_key(l)
                 level = matched_sizes.get(key)
+                num = re.match(r"^((\d+|[A-Z])(\.\d+)*)\.?\s", l.text.strip())
+                if level is None and num and not matched_sizes:
+                    level = min(4, num.group(1).count(".") + 1)
                 if level is None:
                     if l.size >= 1.35 * self.body:
                         level = 1
@@ -228,9 +231,12 @@ class StructureBuilder:
             return False
         bold = sum(1 for g in glyphs if g.info and g.info.bold) / len(glyphs)
         big = sum(1 for g in glyphs if g.size >= 1.12 * self.body) / len(glyphs)
-        if bold < 0.95 and big < 0.9:
+        caps = all(g.c.isupper() for g in glyphs) and len(glyphs) >= 4
+        numbered = bool(re.match(r"^(\d+(\.\d+)*|[A-Z](\.\d+)*)\.?\s+\S", text))
+        smallcaps_heading = caps and len(text) <= 80 and (numbered or l.size >= 1.12 * self.body)
+        if bold < 0.95 and big < 0.9 and not smallcaps_heading:
             return False
-        if big < 0.9 and l.size < 0.97 * self.body:
+        if big < 0.9 and l.size < 0.97 * self.body and not smallcaps_heading:
             return False  # bold small text: table headers, labels
         # must stand alone: gap before or block start, and next line not a continuation
         prev = entries[i - 1].line if i > 0 else None
@@ -621,6 +627,9 @@ def ended_short(prev: Line, line: Line) -> bool:
     remaining = prev.frame[1] - prev.x1
     if remaining < 1.0 * prev.size:
         return False
+    pg, lg = prev.glyphs, line.glyphs
+    if len(pg) >= 2 and pg[-1].c in "-\u2010" and pg[-2].c.isalpha() and lg and lg[0].c.islower():
+        return False  # a hyphenated word continues on the next line
     word = 0.0
     gs = line.glyphs
     if gs:

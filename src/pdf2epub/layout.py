@@ -172,7 +172,7 @@ def _supported_edge(values: list[float], low: bool) -> float:
         support = sum(1 for w in values if abs(w - v) <= 1.5)
         if support >= need:
             return float(v)
-    return float(statistics.median(values))
+    return float(min(values) if low else max(values))  # ragged text: use its full extent
 
 
 def column_of(box: Box, columns: list[tuple[float, float]]) -> tuple[float, float]:
