@@ -198,7 +198,7 @@ class HtmlWriter:
 
     def _href(self, ln: Link) -> str | None:
         if ln.uri:
-            return ln.uri
+            return _safe_uri(ln.uri)
         if ln.target_page is None:
             return None
         if ln.name and ln.name.lower().startswith("hfootnote"):
@@ -250,6 +250,9 @@ class HtmlWriter:
         if p.kind == "heading":
             n = min(6, p.level + 1)
             return f'<h{n} id="{p.id}">{inner}</h{n}>'
+        if p.kind == "algline":
+            indent = f' style="margin-left:{p.level / 10:.1f}em"' if p.level > 0 else ""
+            return f'<p id="{p.id}" class="algline"{indent}>{inner}</p>'
         cls = {
             "p": "", "caption": "caption", "centered": "center", "code": "code", "bib": "bib",
             "note": "note", "boxline": "boxline",
@@ -270,8 +273,9 @@ class HtmlWriter:
             if img is None:
                 return ""
             return f'<div class="eq" id="{v.id}">{img}</div>'
-        if v.kind == "textbox":
-            parts.append(f'<div class="boxwrap" id="{v.id}">')
+        if v.kind in ("textbox", "algorithm"):
+            wrap = "boxwrap algo" if v.kind == "algorithm" else "boxwrap"
+            parts.append(f'<div class="{wrap}" id="{v.id}">')
             if v.caption_above and cap:
                 parts.append(cap)
             for gi, group in enumerate(v.box_groups):
@@ -568,6 +572,20 @@ class HtmlWriter:
         f.ref_ids.append(rid)
         href = self._file_ref(f.chapter, f.id)
         return f'<a epub:type="noteref" class="noteref" id="{rid}" href="{esc(href)}"><sup>{mark}</sup></a>'
+
+
+def _safe_uri(uri: str) -> str | None:
+    from urllib.parse import quote
+
+    uri = uri.strip()
+    if " " in uri and re.search(r"\s\[[\w.\-]+\]$", uri):
+        uri = re.sub(r"\s\[[\w.\-]+\]$", "", uri)  # "https://arxiv.org/abs/1234 [cs.CV]"
+    if not re.match(r"^[a-zA-Z][a-zA-Z0-9+.\-]*:", uri):
+        if uri.startswith("www."):
+            uri = "http://" + uri
+        else:
+            return None
+    return quote(uri, safe=":/?#[]@!$&'()*+,;=%~")
 
 
 def _marker_text(m: str) -> str:

@@ -20,7 +20,7 @@ import numpy as np
 
 from . import geometry as G
 from .analysis import DocStats, math_glyph_ratio
-from .extract import Glyph, Graphic, PageData, Row, split_row
+from .extract import _EXT_FONT, Glyph, Graphic, PageData, Row, split_row
 from .geometry import Box
 
 CAPTION_RE = re.compile(
@@ -29,6 +29,7 @@ CAPTION_RE = re.compile(
     r"\s*~?(?P<num>[A-Z]?\d+(?:\.\d+)*[a-z]?|[IVXLC]+)\s*(?P<delim>[:.|—–]|\s[-–—]\s)"
 )
 EQNUM_RE = re.compile(r"^\(\s*[A-Za-z]{0,3}[\d]+(?:\.\d+)*[a-z]?['′]?\s*\)$|^\(\s*[A-Z]\.\d+\s*\)$|^\(\s*[ivx]+\s*\)$")
+ALGO_RE = re.compile(r"^\s*(?P<kind>Algorithm|ALGORITHM)\s+(?P<num>\d+(?:\.\d+)*)\b")
 SUBCAPTION_RE = re.compile(r"^\(([a-z]|[ivx]{1,4})\)\s")
 BULLET_CHARS = set("•◦▪▫‣∙·●○■□–—-*")
 
@@ -97,8 +98,34 @@ def find_columns(segs: list[Row], stats: DocStats, page_w: float) -> list[tuple[
         if segs:
             return [(min(s.x0 for s in segs), max(s.x1 for s in segs))]
         return [(0.1 * page_w, 0.9 * page_w)]
-    lo = int(min(s.x0 for s in body))
-    hi = int(max(s.x1 for s in body)) + 1
+    cols = _columns_from(body, body, stats)
+    if len(cols) == 1:
+        # full-width captions/titles can hide the gutter: retry with column-width rows only
+        lo = min(s.x0 for s in body)
+        hi = max(s.x1 for s in body)
+        prose = [s for s in body if len(s.glyphs) >= 15 and math_glyph_ratio(s.glyphs) < 0.3]
+        narrow = [s for s in prose if G.width(s.box) < 0.55 * (hi - lo)]
+        if len(narrow) >= 0.6 * len(prose) and len(narrow) >= 12:
+            cand = _columns_from(narrow, body, stats)
+            if len(cand) > 1:
+                ok = True
+                for a, b in cand:
+                    members = [s for s in narrow if s.x0 >= a - 2 and s.x1 <= b + 2]
+                    if len(members) < max(6, 0.2 * len(narrow)):
+                        ok = False
+                        break
+                    left = Counter(round(s.x0) for s in members).most_common(1)[0][1]
+                    if left < 0.4 * len(members):
+                        ok = False  # columns of real text share a left margin
+                        break
+                if ok:
+                    return cand
+    return cols
+
+
+def _columns_from(body: list[Row], all_body: list[Row], stats: DocStats) -> list[tuple[float, float]]:
+    lo = int(min(s.x0 for s in all_body))
+    hi = int(max(s.x1 for s in all_body)) + 1
     hist = np.zeros(hi - lo + 2)
     for s in body:
         hist[int(s.x0) - lo : int(s.x1) - lo + 1] += 1
@@ -125,6 +152,9 @@ def find_columns(segs: list[Row], stats: DocStats, page_w: float) -> list[tuple[
     for i in range(0, len(bounds), 2):
         a, b = bounds[i], bounds[i + 1]
         members = [s for s in body if s.x0 >= a - 2 and s.x1 <= b + 2]
+        prose = [s for s in members if len(s.glyphs) >= 15 and math_glyph_ratio(s.glyphs) < 0.35]
+        if len(prose) >= 3:
+            members = prose
         if members:
             left = _supported_edge([s.x0 for s in members], low=True)
             right = _supported_edge([s.x1 for s in members], low=False)
@@ -240,6 +270,7 @@ class PageAnalyzer:
         rows = [r for r in pd.rows if r.role != "furniture"]
         self.dropped = [r for r in pd.rows if r.role == "furniture"]
         self.rows = rows
+        self._merge_orphan_scripts()
         self.segs: list[Row] = []
         self.segs_of: dict[int, list[Row]] = {}
         self._split_rows(None)
@@ -253,6 +284,49 @@ class PageAnalyzer:
         self.graphics = vis
         self.regions: list[Region] = []
         self.footnotes: list[Footnote] = []
+
+    def _merge_orphan_scripts(self) -> None:
+        """Small math rows (inline fraction parts, stacked scripts) belong to an adjacent text line."""
+        body = self.body
+        changed = True
+        while changed:
+            changed = False
+            for small in list(self.rows):
+                if not small.glyphs:
+                    continue
+                radical = all(g.c in "√∑∏∫" or g.font.upper().startswith(_EXT_FONT) for g in small.glyphs) and len(small.glyphs) <= 3
+                if (small.size >= 0.85 * body or math_glyph_ratio(small.glyphs) < 0.6 or len(small.glyphs) > 40) and not radical:
+                    continue
+                best = None
+                best_d = 1e9
+                for row in self.rows:
+                    if row is small or row.size < 0.9 * body:
+                        continue
+                    shift = small.baseline - row.baseline
+                    lo_b, hi_b = (-1.7, 0.9) if radical else (-0.95, 0.75)
+                    if not (lo_b * row.size <= shift <= hi_b * row.size):
+                        continue
+                    mg = [g for g in row.glyphs if g.math]
+                    if not mg:
+                        continue
+                    gap = min(max(G.h_gap(small.box, g.box), 0.0) for g in mg)
+                    if gap > 0.5 * row.size:
+                        continue
+                    # a text line, not a display equation (those are grouped later anyway)
+                    if math_glyph_ratio(row.glyphs) > 0.5:
+                        continue
+                    d = abs(shift) + gap
+                    if d < best_d:
+                        best, best_d = row, d
+                if best is None:
+                    continue
+                for g in small.glyphs:
+                    g.level = 1 if g.oy < best.baseline else -1
+                best.glyphs.extend(small.glyphs)
+                best.glyphs.sort(key=lambda g: (g.x0, -g.level))
+                best.box = G.union([best.box, small.box])
+                self.rows.remove(small)
+                changed = True
 
     def _split_rows(self, cuts: list[float] | None) -> None:
         self.segs = []
@@ -369,8 +443,14 @@ class PageAnalyzer:
             if not segs:
                 continue
             m = None
+            algo_nodelim = False
             for k, sg in enumerate(segs):
                 m = CAPTION_RE.match(sg.text)
+                if not m:
+                    m2 = ALGO_RE.match(sg.text)
+                    if m2 and all(g.info and g.info.bold for g in sg.glyphs[: len(m2.group(0).replace(" ", ""))]):
+                        m = m2
+                        algo_nodelim = True
                 if m:
                     segs = segs[k:]
                     break
@@ -412,6 +492,11 @@ class PageAnalyzer:
                     break
                 if CAPTION_RE.match(nsegs[0].text):
                     break
+                if any(
+                    g.hrule and last.core[3] - 1 <= g.box[1] <= nr.core[1] + 1 and G.h_overlap(g.box, first.box) > 0
+                    for g in self.graphics
+                ):
+                    break  # a rule closes the caption (algorithm/table headers)
                 if nsegs[0].x0 < first.x0 - 0.6 * first.size and G.width(nr.box) > 1.3 * G.width(G.union(s.box for s in cap_segs)):
                     break
                 cap_segs.extend(nsegs)
@@ -424,12 +509,40 @@ class PageAnalyzer:
                 label = f"{m.group('kind').title()} {m.group('num')}"
             for s in cap_segs:
                 self.take(s, "caption")
-            caps.append({"segs": cap_segs, "kind": kind, "label": label, "box": G.union(s.box for s in cap_segs)})
+            is_algo = kind_word.startswith("algorithm") or algo_nodelim
+            caps.append({"segs": cap_segs, "kind": kind, "label": label, "box": G.union(s.box for s in cap_segs), "algorithm": is_algo})
         return caps
 
     # -- graphics --------------------------------------------------------
+    def mark_math_strokes(self) -> None:
+        """Fraction bars, radical signs and overlines drawn as paths belong to formulas."""
+        math_glyphs = [g for r in self.rows for g in r.glyphs if g.math]
+        if not math_glyphs:
+            return
+        width = max((c[1] - c[0] for c in self.columns), default=self.pd.width)
+        for gr in self.graphics:
+            is_rect = "re" in gr.items or "qu" in gr.items or gr.items.count("c") >= 4
+            if gr.kind != "path" or gr.role or (is_rect and not gr.hrule):
+                continue
+            w, h = G.width(gr.box), G.height(gr.box)
+            if w > 0.6 * width or h > 4 * self.body or gr.n_items > 12:
+                continue
+            area = G.expand(gr.box, 0.35 * self.body)
+            near = [g for g in math_glyphs if G.overlaps(g.box, area)]
+            if not near:
+                continue
+            if gr.hrule:
+                ymid = (gr.box[1] + gr.box[3]) / 2
+                above = any((g.box[1] + g.box[3]) / 2 < ymid and G.h_overlap(g.box, gr.box) > 0 for g in near)
+                below = any((g.box[1] + g.box[3]) / 2 > ymid and G.h_overlap(g.box, gr.box) > 0 for g in near)
+                ext = any(g.font.upper().startswith(("CMEX", "LMEX", "LMMATHEXT")) for g in near)
+                if not ((above and below) or (below and ext) or (below and w < 8 * self.body)):
+                    continue
+            gr.role = "math"
+
     def make_clusters(self) -> list[Cluster]:
-        gs = [g for g in self.graphics if g.role != "footnote-rule"]
+        self.mark_math_strokes()
+        gs = [g for g in self.graphics if g.role not in ("footnote-rule", "math")]
         out = []
         for group in cluster_graphics(gs, 0.6 * self.body):
             box = G.union(g.box for g in group)
@@ -525,6 +638,14 @@ class PageAnalyzer:
     def region_for_caption(self, cap: dict, clusters: list[Cluster], tables: list[Region]) -> None:
         cbox = cap["box"]
         reg = None
+        if cap.get("algorithm"):
+            reg = self._algorithm_region(cap)
+            if reg is not None:
+                reg.caption = cap["segs"]
+                reg.caption_above = True
+                reg.label = cap["label"]
+                self.regions.append(reg)
+                return
         directions = ["below", "above"] if cap["kind"] == "table" else ["above", "below"]
         for d in directions:
             reg = self._attach_table(cap, tables, d) if cap["kind"] == "table" else None
@@ -544,6 +665,48 @@ class PageAnalyzer:
             reg.kind = "table"
         if reg not in self.regions:
             self.regions.append(reg)
+
+    def _algorithm_region(self, cap: dict) -> Region | None:
+        """Pseudo-code below an 'Algorithm N' caption, usually closed by a rule."""
+        cbox = cap["box"]
+        c = self.col(cbox)
+        span = (min(cbox[0], c[0]), max(cbox[2], c[1]))
+        rules = sorted(
+            (g for g in self.graphics if g.hrule and g.box[1] > cbox[3] - 1 and G.h_overlap(g.box, (span[0], 0, span[1], 1)) > 0.5 * G.width(g.box)
+             and G.width(g.box) > 0.5 * (span[1] - span[0])),
+            key=lambda g: g.box[1],
+        )
+        # skip a rule directly under the caption (algorithm2e/algorithmic midrule)
+        bottom = None
+        for r in rules:
+            if r.box[1] - cbox[3] < 0.8 * self.body:
+                continue
+            bottom = r
+            break
+        limit = bottom.box[1] if bottom is not None else cbox[3] + 40 * self.body
+        rows = sorted(
+            {s.row_id for s in self.segs if self.free(s) and s.core[1] >= cbox[3] - 1 and s.core[3] <= limit + 1
+             and s.x0 >= span[0] - 2 and s.x1 <= span[1] + 2},
+            key=lambda rid: self.rows[rid].baseline,
+        )
+        picked = []
+        last = cbox[3]
+        for rid in rows:
+            row = self.rows[rid]
+            if row.core[1] - last > 1.6 * self.stats.line_step and bottom is None:
+                break
+            picked.append(rid)
+            last = row.core[3]
+        if not picked:
+            return None
+        segs = [s for rid in picked for s in self.segs_of[rid] if self.free(s)]
+        reg = Region("algorithm", self.pd.index, G.union(s.box for s in segs), segs=segs)
+        for s in segs:
+            self.take(s, reg)
+        for g in self.graphics:
+            if g.hrule and g.role in ("", "math") and G.v_overlap(G.expand(g.box, 0, 1), (0, cbox[1] - 4, 1, limit + 2)) > 0 and G.h_overlap(g.box, reg.box) > 0:
+                g.role = "algorithm"
+        return reg
 
     def _attach_table(self, cap: dict, tables: list[Region], direction: str) -> Region | None:
         cbox = cap["box"]
@@ -621,8 +784,7 @@ class PageAnalyzer:
                     changed = True
         for cl in members:
             reg.graphics.extend(cl.graphics)
-        if all(cl.kind == "frame" for cl in members):
-            reg.kind = "textbox"
+        frame_only = all(cl.kind == "frame" for cl in members)
         # absorb text between the content and the caption (sub-captions, labels)
         lo_y, hi_y = (reg.box[3], cbox[1]) if up else (cbox[3], reg.box[1])
         for s in self.segs:
@@ -631,8 +793,29 @@ class PageAnalyzer:
             if s.core[1] >= lo_y - 2 and s.core[3] <= hi_y + 2 and G.h_overlap(s.box, reg.box) > 0.5 * G.width(s.box):
                 reg.segs.append(s)
                 self.take(s, reg)
-        self._grow_text(reg, small_only=reg.kind != "textbox")
+        self._grow_text(reg, small_only=not frame_only)
+        if frame_only and self._texty(reg):
+            reg.kind = "textbox"
         return reg
+
+    def _texty(self, reg: Region) -> bool:
+        """A frame holding prose/code (render as text) rather than a diagram with labels."""
+        frames = top_level_frames([g for g in reg.graphics if g.closed_rect])
+        if not frames or not reg.segs:
+            return False
+        rows: dict[int, list[Row]] = {}
+        for sg in reg.segs:
+            rows.setdefault(sg.row_id, []).append(sg)
+        chars = sum(len(sg.glyphs) for sg in reg.segs)
+        if chars < 20 * len(frames):
+            return False
+        wide = 0
+        for rid, parts in rows.items():
+            box = G.union(p.box for p in parts)
+            f = next((f for f in frames if G.fraction_inside(box, G.expand(f.box, 2)) > 0.5), None)
+            if f is not None and G.width(box) >= 0.35 * G.width(f.box):
+                wide += 1
+        return wide >= 0.6 * len(rows)
 
     def _paragraph_between(self, a: Box, b: Box, horizontal: bool = False) -> bool:
         if horizontal:
@@ -715,6 +898,10 @@ class PageAnalyzer:
                     self.take(s, reg)
                     reg.box = G.union([reg.box, s.box])
                     changed = True
+        for gr in self.graphics:
+            if gr.role == "math" and G.contains(G.expand(reg.box, 1), gr.box) and gr not in reg.graphics:
+                reg.graphics.append(gr)
+                gr.role = "math-in-region"
         for gl in self.pd.rotated:
             if G.overlaps(gl.box, G.expand(reg.box, 1.2 * self.body)):
                 reg.rotated.append(gl)
@@ -740,7 +927,7 @@ class PageAnalyzer:
             reg = Region(kind, self.pd.index, cl.box, graphics=list(cl.graphics))
             cl.used = True
             self._grow_text(reg, small_only=kind == "figure")
-            if kind == "textbox" and not reg.segs:
+            if kind == "textbox" and not self._texty(reg):
                 reg.kind = "figure"
             if kind == "figure" and G.width(reg.box) < 1.5 * self.body and G.height(reg.box) < 1.5 * self.body:
                 # tiny glyph-like drawing inside running text (e.g. a check mark)
@@ -806,6 +993,21 @@ class PageAnalyzer:
                     last.append(rid)
                     continue
             groups.append([rid])
+        # merge groups that overlap or touch
+        merged = True
+        while merged and len(groups) > 1:
+            merged = False
+            for a in range(len(groups)):
+                for b in range(a + 1, len(groups)):
+                    ba = G.union(self.rows[r].box for r in groups[a])
+                    bb = G.union(self.rows[r].box for r in groups[b])
+                    if G.v_gap(ba, bb) < 0.3 * body and G.h_overlap(ba, bb) > -1.5 * body:
+                        groups[a] = groups[a] + groups[b]
+                        groups.pop(b)
+                        merged = True
+                        break
+                if merged:
+                    break
         for grp in groups:
             gbox = G.union(self.rows[r].box for r in grp)
             members = set(grp)
@@ -825,7 +1027,8 @@ class PageAnalyzer:
                     near = G.v_gap(row.box, gbox) < 0.35 * body
                     inside_x = row.x0 >= gbox[0] - 1.5 * body and row.x1 <= gbox[2] + 1.5 * body
                     mathy = math_glyph_ratio(row.glyphs) >= 0.3 or row.size < 0.85 * body
-                    if near and inside_x and mathy and len(row.glyphs) < 60:
+                    enclosed = G.fraction_inside(row.core, gbox) > 0.6 and math_glyph_ratio(row.glyphs) >= 0.2
+                    if (near and inside_x and mathy and len(row.glyphs) < 60) or enclosed:
                         members.add(rid)
                         gbox = G.union([gbox, row.box])
                         changed = True
@@ -838,7 +1041,11 @@ class PageAnalyzer:
             box = G.union(s.box for s in content)
             reg = Region("equation", self.pd.index, box, segs=content, eqnum_segs=nums)
             for g in self.graphics:
-                if g.role:
+                if g.role and g.role != "math":
+                    continue
+                if g.role == "math" and G.contains(G.expand(box, 2), g.box):
+                    reg.graphics.append(g)
+                    g.role = "equation"
                     continue
                 if (g.hrule or g.kind == "path") and G.contains(G.expand(box, 2), g.box) and G.height(g.box) < 0.4 * G.height(box) + 2:
                     reg.graphics.append(g)

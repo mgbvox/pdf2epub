@@ -51,6 +51,8 @@ div.boxwrap { margin: 1em 0 0.9em 0; }
 div.box { border: 1px solid #888888; padding: 0.25em 0.5em 0.4em 0.5em; margin: 0.3em 0 0 0; }
 p.boxline { margin: 0.3em 0 0 0; text-align: left; line-height: 1.35; }
 p.boxline.gap { margin-top: 0.9em; }
+div.algo div.box { border-left: 0; border-right: 0; padding-left: 0.2em; padding-right: 0.2em; }
+p.algline { margin: 0.12em 0 0 0; text-align: left; line-height: 1.35; padding-left: 1.2em; text-indent: -1.2em; }
 div.notes { margin-top: 1.5em; }
 hr.notes { width: 30%; margin: 0 auto 0 0; border: 0; border-top: 1px solid #888888; }
 aside.footnote { margin: 0; }

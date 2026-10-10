@@ -512,7 +512,7 @@ class StructureBuilder:
 
     # ------------------------------------------------------------------
     def _visual(self, reg: Region) -> Visual:
-        prefix = {"figure": "fig", "table": "tab", "equation": "eq", "textbox": "box"}.get(reg.kind, "fig")
+        prefix = {"figure": "fig", "table": "tab", "equation": "eq", "textbox": "box", "algorithm": "alg"}.get(reg.kind, "fig")
         vis = Visual(page=reg.page, box=reg.outer_box, region=reg, kind=reg.kind, label=reg.label, caption_above=reg.caption_above)
         vis.id = self.new_id(prefix)
         links = self.pages[reg.page].links
@@ -523,6 +523,16 @@ class StructureBuilder:
             vis.caption = cap
         if reg.kind == "textbox":
             vis.box_groups = self._textbox_groups(reg, links)
+        elif reg.kind == "algorithm":
+            lines = _lines_from_segments(reg.segs, links, split_far=False)
+            left = min((l.x0 for l in lines), default=0.0)
+            paras = []
+            for l in lines:
+                p = Paragraph(page=reg.page, box=l.box, lines=[l], kind="algline")
+                p.level = int(round((l.x0 - left) / self.body * 10))  # indent in tenths of an em
+                p.id = self.new_id("al")
+                paras.append(p)
+            vis.box_groups = [paras]
         return vis
 
     def _textbox_groups(self, reg: Region, links: list[Link]) -> list[list[Paragraph]]:
@@ -629,7 +639,7 @@ def _links_for(box: Box, links: list[Link]) -> list[Link]:
     return [ln for ln in links if G.overlaps(ln.box, box)]
 
 
-def _lines_from_segments(segs: list[Row], links: list[Link]) -> list[Line]:
+def _lines_from_segments(segs: list[Row], links: list[Link], split_far: bool = True) -> list[Line]:
     by_row: dict[int, list[Row]] = {}
     for s in segs:
         by_row.setdefault(s.row_id, []).append(s)
@@ -639,7 +649,7 @@ def _lines_from_segments(segs: list[Row], links: list[Link]) -> list[Line]:
         # keep far-apart segments of the same row separate (e.g. side-by-side sub-captions)
         cur = [group[0]]
         for s in group[1:]:
-            if s.x0 - cur[-1].x1 > 3 * s.size:
+            if split_far and s.x0 - cur[-1].x1 > 3 * s.size:
                 lines.append(Line.from_segments(cur, _links_for(G.union(c.box for c in cur), links)))
                 cur = [s]
             else:
