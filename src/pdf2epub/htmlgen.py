@@ -474,7 +474,7 @@ class HtmlWriter:
         area = G.expand(G.union(members), 0.5 * t.size)
         foreign = self._foreign(t.page, area, ids, gids)
         allow = [ink_box(g) for g in t.glyphs] + [gr.box for gr in t.graphics]
-        res = self.r.crop(t.page, members, foreign, pad=0.35 * t.size, margin=0.0, allow_boxes=allow)
+        res = self.r.crop(t.page, members, foreign, pad=0.35 * t.size, margin=0.0, allow_boxes=allow, pad_x=0.12 * t.size)
         if res is None:
             return esc(t.alt)
         arr, ink = res

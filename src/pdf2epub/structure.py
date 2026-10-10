@@ -326,6 +326,10 @@ class StructureBuilder:
 
     # ------------------------------------------------------------------
     def _assemble(self, per_page: list[list[_Entry]]) -> None:
+        self._next_line: dict[int, Line] = {}
+        flat = [e.line for entries in per_page for e in entries if e.line is not None]
+        for a, b in zip(flat, flat[1:]):
+            self._next_line[id(a)] = b
         cur: _Open | None = None
         deferred: list[Visual] = []
         after_equation = False
@@ -446,7 +450,14 @@ class StructureBuilder:
                 return True  # centred block (author cells, centred captions)
             _ = cw
             if line.x0 > line.frame[0] + 0.7 * size and prev.x0 <= prev.frame[0] + 0.3 * size:
-                return False  # first-line indent starts a new paragraph
+                # Indented line after a full line: first-line indent of a new paragraph, or the
+                # continuation of a hanging-indent entry (bibliographies)?  Look ahead.
+                nxt = self._next_line.get(id(line))
+                if self.indent_style and nxt is not None and nxt.page == line.page:
+                    back_left = abs(nxt.x0 - prev.x0) < 0.4 * size
+                    nxt_gap = nxt.core[1] - line.core[3]
+                    if back_left and nxt_gap <= normal + 0.35 * size:
+                        return False
             if line.x0 < prev.x0 - 0.7 * size:
                 # outdent: hanging-indent lists/bibliographies start a new entry,
                 # unless the previous line was an indented first line.
@@ -474,7 +485,9 @@ class StructureBuilder:
         if len(lines) >= 2:
             centers = [(l.x0 + l.x1) / 2 for l in lines]
             lefts = [l.x0 for l in lines]
-            if max(centers) - min(centers) < 0.5 * lines[0].size and max(lefts) - min(lefts) > 4:
+            col = column_of(para.box, self.layout_by_page[para.page].columns)
+            narrow = max(G.width(l.box) for l in lines) < 0.85 * (col[1] - col[0])
+            if narrow and max(centers) - min(centers) < 0.5 * lines[0].size and max(lefts) - min(lefts) > 4:
                 para.kind = "centered"
                 para.keep_breaks = True
         if para.kind == "p" and all(l.row_id in self._grid_rows.get(l.page, ()) for l in lines):

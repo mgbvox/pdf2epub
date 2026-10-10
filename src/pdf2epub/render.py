@@ -72,6 +72,7 @@ class Renderer:
         margin: float = 1.0,
         limit: Box | None = None,
         allow_boxes: list[Box] | None = None,
+        pad_x: float | None = None,
     ) -> tuple[np.ndarray, Box] | None:
         """Crop the ink belonging to ``members``; pixels covered only by ``foreign`` boxes are erased.
 
@@ -82,7 +83,7 @@ class Renderer:
         mbox = G.union(members)
         if G.is_empty(mbox):
             return None
-        search = G.expand(mbox, pad)
+        search = G.expand(mbox, pad if pad_x is None else pad_x, pad)
         page_box = (0.0, 0.0, w / scale, h / scale)
         search = G.intersect(search, page_box)
         if limit is not None:
@@ -100,9 +101,12 @@ class Renderer:
         for b in foreign:
             if not G.overlaps(b, search):
                 continue
-            ey = 0.06 * (b[3] - b[1])
-            bx0, by0 = int(b[0] * scale) - x0 - 1, int((b[1] - ey) * scale) - y0
-            bx1, by1 = int(b[2] * scale) - x0 + 2, int((b[3] + ey) * scale) - y0 + 1
+            bh = b[3] - b[1]
+            # glyph ink can overshoot its advance box (f hooks, italics): widen small boxes
+            ey = 0.06 * bh if bh < 30 else 0.0
+            ex = 0.12 * bh if bh < 30 else 0.0
+            bx0, by0 = int((b[0] - ex) * scale) - x0 - 1, int((b[1] - ey) * scale) - y0
+            bx1, by1 = int((b[2] + ex) * scale) - x0 + 2, int((b[3] + ey) * scale) - y0 + 1
             sl = (slice(max(0, by0), max(0, by1)), slice(max(0, bx0), max(0, bx1)))
             region = img[sl]
             keep = allow[sl]

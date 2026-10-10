@@ -149,6 +149,9 @@ def _join(tokens: list[Token], nxt: list[Token], ctx: InlineContext) -> None:
                 keep = vh > 0 and vh >= vj
                 if not keep and vj == 0 and b[0].isupper() and not a[-1].isupper():
                     keep = True
+                if not keep and vj == 0 and len(a) >= 3 and len(b) >= 3:
+                    # both halves are words in their own right: a real compound ("safety-aligned")
+                    keep = ctx.vocab.get(a.lower(), 0) > 0 and ctx.vocab.get(b.lower(), 0) > 0
                 if not keep:
                     last.text = last.text[:-1]
                     if not last.text:
@@ -265,9 +268,12 @@ def tokenize_line(line: Line, ctx: InlineContext) -> list[Token]:
     i = 0
     n = len(gs)
     size = line.size
+    right: list[Glyph] = []  # glyph with the largest right edge so far
+    for k, gl in enumerate(gs):
+        right.append(gl if k == 0 or gl.x1 >= right[-1].x1 else right[-1])
     while i < n:
         g = gs[i]
-        space = i > 0 and needs_space(gs[i - 1], g, size)
+        space = i > 0 and needs_space(right[i - 1], g, size)
         ln = glinks[i]
         # footnote references
         if ln is not None and ln.name and ln.name.lower().startswith("hfootnote"):

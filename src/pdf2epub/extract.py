@@ -223,6 +223,14 @@ def _make_fragment(glyphs: list[Glyph]) -> Fragment:
     for g in glyphs:
         weights[round(g.size, 1)] = weights.get(round(g.size, 1), 0.0) + max(g.x1 - g.x0, 0.1)
     main = max(weights.items(), key=lambda kv: (kv[1], kv[0]))[0]
+    biggest = max((g.size for g in glyphs if not g.font.upper().startswith(_EXT_FONT)), default=main)
+    if biggest > main * 1.15:
+        big = [g for g in glyphs if abs(g.size - biggest) < 0.15]
+        big_bl = statistics.median(g.oy for g in big)
+        small = [g for g in glyphs if g.size < biggest - 0.15]
+        # small glyphs that sit off the big glyphs' baseline are scripts of them
+        if small and sum(1 for g in small if abs(g.oy - big_bl) > 0.1 * biggest) >= 0.7 * len(small):
+            main = round(biggest, 1)
     base = [g.oy for g in glyphs if abs(g.size - main) < 0.15]
     baseline = statistics.median(base) if base else glyphs[0].oy
     main_glyphs = [g for g in glyphs if abs(g.size - main) < 0.15 and abs(g.oy - baseline) < 0.15 * main]

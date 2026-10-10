@@ -16,7 +16,7 @@ from .render import ImageAsset
 # scale with the chosen font size, and cap them at the screen width.
 CSS = """\
 @charset "utf-8";
-body { margin: 0; padding: 0 0.2em; }
+body { margin: 0; padding: 0 0.2em; overflow-wrap: break-word; word-wrap: break-word; }
 p { margin: 0.55em 0 0 0; text-indent: 0; line-height: 1.4; orphans: 2; widows: 2; }
 p.cont { margin-top: 0.25em; }
 p.center { text-align: center; }
@@ -37,7 +37,8 @@ ul { margin: 0.4em 0 0 0; padding-left: 1.4em; }
 li { margin-top: 0.3em; }
 p.li { margin: 0; }
 sup, sub { font-size: 0.72em; line-height: 0; }
-.mono { font-family: monospace; }
+.mono { font-family: monospace; overflow-wrap: break-word; word-wrap: break-word; }
+p.bib .mono, p.note .mono { word-break: break-all; }
 a.noteref { text-decoration: none; }
 div.figure { margin: 1.1em 0 0.9em 0; text-align: center; page-break-inside: avoid; }
 div.figure div.img { margin: 0.35em 0; text-align: center; }
