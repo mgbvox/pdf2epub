@@ -1,10 +1,10 @@
 {
   "metrics": {
-    "word_recall": 0.9452,
-    "word_precision": 0.9629,
-    "bigram_recall": 0.9061,
-    "bigram_precision": 0.923,
-    "order_score": 0.9808
+    "word_recall": 0.9599,
+    "word_precision": 0.9835,
+    "bigram_recall": 0.944,
+    "bigram_precision": 0.9672,
+    "order_score": 0.9874
   },
   "counts": {
     "paragraphs": 245,

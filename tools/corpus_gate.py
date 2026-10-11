@@ -12,11 +12,15 @@ regression against the baseline.
     python tools/corpus_gate.py --keep out/     # keep the new EPUBs for inspection
     python tools/corpus_gate.py --update        # accept: rewrite EPUBs + baselines (refuses on regressions)
     python tools/corpus_gate.py --add paper.pdf --name 2505.19056 [--title ... -a ...]
+    python tools/corpus_gate.py --rescore       # metric change only: re-score the committed EPUBs
 
 Policy: commit a code change only if this gate passes on every entry. When the
 change improves the corpus, run ``--update`` and commit the regenerated EPUBs
 and baselines together with the code, so the diff of ``*.quality.json`` shows
-the improvement.
+the improvement. A change to :mod:`pdf2epub.quality` itself (a new lint rule, a
+fixed metric) changes the yardstick, not the conversions: run ``--rescore``,
+which re-evaluates the committed EPUBs without converting anything, and commit
+that on its own before judging converter changes against the new numbers.
 """
 
 from __future__ import annotations
@@ -116,11 +120,26 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--title")
     ap.add_argument("-a", "--author", action="append")
     ap.add_argument("--index", action="store_true", help="only regenerate demo/README.md")
+    ap.add_argument("--rescore", action="store_true", help="re-evaluate the committed EPUBs with the current metrics (no conversion)")
     args = ap.parse_args(argv)
 
     from pdf2epub import quality
 
     if args.index:
+        write_index()
+        return 0
+    if args.rescore:
+        for e in entries(args.names or None):
+            pdf = Path(e["pdf"])
+            data = quality.evaluate(pdf, pdf.with_suffix(".epub")).to_json()
+            for key in ("options", "source"):
+                if key in e["baseline"]:
+                    data[key] = e["baseline"][key]
+            old = e["baseline"]
+            print(f"{e['name']:<14} issues {sum(old.get('issue_counts', {}).values())} -> {sum(data['issue_counts'].values())}  "
+                  + " ".join(f"{k}={old.get('metrics', {}).get(k, 0):.4f}->{v:.4f}" for k, v in data["metrics"].items()
+                             if abs(v - old.get("metrics", {}).get(k, 0)) > 1e-4))
+            pdf.with_suffix(".quality.json").write_text(json.dumps(data, indent=2) + "\n")
         write_index()
         return 0
     if args.add:

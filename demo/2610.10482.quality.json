@@ -1,9 +1,9 @@
 {
   "metrics": {
-    "word_recall": 0.868,
-    "word_precision": 0.9937,
-    "bigram_recall": 0.8596,
-    "bigram_precision": 0.9841,
+    "word_recall": 0.8695,
+    "word_precision": 0.9941,
+    "bigram_recall": 0.8631,
+    "bigram_precision": 0.9867,
     "order_score": 1.0
   },
   "counts": {

@@ -154,13 +154,15 @@ def lint(epub_path: str | Path) -> list[Issue]:
     seen_text: dict[str, _Block] = {}
     captions: dict[str, list[int]] = {}
     prev: _Block | None = None
-    for b in blocks:
+    for k, b in enumerate(blocks):
+        nxt = blocks[k + 1] if k + 1 < len(blocks) else None
         plain_p = b.tag == "p" and b.cls in body_kinds
         if plain_p:
             if not b.text and not b.imgs:
                 add("empty-paragraph", b, "")
             words = b.text.split()
-            if b.text and len(words) < 4 and len(b.text) < 25 and not b.text.endswith(":"):
+            lead_in = nxt is not None and nxt.tag == "div" and nxt.chapter == b.chapter  # text leading into a display equation
+            if b.text and len(words) < 4 and len(b.text) < 25 and not b.text.endswith((":", ",")) and not lead_in:
                 add("stray-fragment", b)
             if b.html_has_br:
                 add("hard-breaks", b)
@@ -257,22 +259,40 @@ def pdf_words(pdf_path: str | Path, pages: list[int] | None = None) -> list[str]
     return _norm_words(raw)
 
 
+_INLINE = {"a", "span", "i", "b", "em", "strong", "sub", "sup", "small", "code", "var", "abbr", "cite", "u", "s"}
+
+
 def epub_words(epub_path: str | Path) -> list[str]:
+    """Words of the EPUB in spine order: running text plus image alt text.
+
+    Inline markup does not split words (small caps are written as
+    ``M<span>ASK</span>``); block elements and images do.
+    """
     with zipfile.ZipFile(epub_path) as z:
-        out: list[str] = []
+        parts: list[str] = []
+
+        def walk(el: ET.Element) -> None:
+            tag = el.tag.replace(XHTML, "")
+            inline = tag in _INLINE
+            if not inline:
+                parts.append(" ")
+            if tag == "img":
+                parts.append(" " + el.get("alt", "") + " ")
+            if el.text:
+                parts.append(el.text)
+            for child in el:
+                walk(child)
+                if child.tail:
+                    parts.append(child.tail)
+            if not inline:
+                parts.append(" ")
+
         for name in _spine(z):
             root = ET.fromstring(z.read(name))
             body = root.find(f"{XHTML}body")
-            if body is None:
-                continue
-            for el in body.iter():
-                if el.tag == f"{XHTML}img":
-                    out.extend(_norm_words([el.get("alt", "")]))
-                if el.text:
-                    out.extend(_norm_words(el.text.split()))
-                if el.tail:
-                    out.extend(_norm_words(el.tail.split()))
-    return out
+            if body is not None:
+                walk(body)
+    return _norm_words("".join(parts).split())
 
 
 def _overlap(a: Counter, b: Counter) -> int:

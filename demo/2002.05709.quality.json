@@ -1,9 +1,9 @@
 {
   "metrics": {
-    "word_recall": 0.8234,
-    "word_precision": 0.9743,
-    "bigram_recall": 0.7909,
-    "bigram_precision": 0.9358,
+    "word_recall": 0.8254,
+    "word_precision": 0.9751,
+    "bigram_recall": 0.7955,
+    "bigram_precision": 0.9399,
     "order_score": 0.9403
   },
   "counts": {
@@ -23,7 +23,7 @@
     "caption-gap": 2,
     "long-word": 1,
     "split-paragraph": 29,
-    "stray-fragment": 8,
+    "stray-fragment": 6,
     "tall-inline-math": 7,
     "wide-inline-math": 1
   },
