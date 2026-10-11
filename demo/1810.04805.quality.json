@@ -1,0 +1,31 @@
+{
+  "metrics": {
+    "word_recall": 0.8948,
+    "word_precision": 0.9615,
+    "bigram_recall": 0.8571,
+    "bigram_precision": 0.921,
+    "order_score": 0.95
+  },
+  "counts": {
+    "paragraphs": 224,
+    "headings": 31,
+    "figures": 5,
+    "tables": 9,
+    "equations": 0,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 13,
+    "inline_math_images": 16,
+    "images": 31
+  },
+  "issue_counts": {
+    "caption-gap": 1,
+    "split-paragraph": 12,
+    "stray-fragment": 5
+  },
+  "options": {},
+  "source": {
+    "pages": 16,
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "metrics": {
+    "word_recall": 0.9029,
+    "word_precision": 0.9771,
+    "bigram_recall": 0.8822,
+    "bigram_precision": 0.9548,
+    "order_score": 0.9933
+  },
+  "counts": {
+    "paragraphs": 413,
+    "headings": 61,
+    "figures": 10,
+    "tables": 12,
+    "equations": 11,
+    "text_boxes": 19,
+    "algorithms": 0,
+    "footnotes": 9,
+    "inline_math_images": 80,
+    "images": 119
+  },
+  "issue_counts": {
+    "long-word": 1,
+    "split-paragraph": 11,
+    "stray-fragment": 2,
+    "tall-inline-math": 1
+  },
+  "options": {
+    "title": "Refusal in Language Models Is Mediated by a Single Direction",
+    "authors": [
+      "Andy Arditi",
+      "Oscar Obeso",
+      "Aaquib Syed",
+      "Daniel Paleka",
+      "Nina Panickssery",
+      "Wes Gurnee",
+      "Neel Nanda"
+    ]
+  }
+}

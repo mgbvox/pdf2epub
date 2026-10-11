@@ -1,0 +1,33 @@
+{
+  "metrics": {
+    "word_recall": 0.9573,
+    "word_precision": 0.9732,
+    "bigram_recall": 0.9067,
+    "bigram_precision": 0.9217,
+    "order_score": 0.9961
+  },
+  "counts": {
+    "paragraphs": 328,
+    "headings": 33,
+    "figures": 4,
+    "tables": 1,
+    "equations": 110,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 0,
+    "inline_math_images": 223,
+    "images": 342
+  },
+  "issue_counts": {
+    "hard-breaks": 4,
+    "split-paragraph": 42,
+    "stray-fragment": 39,
+    "tall-inline-math": 1,
+    "wide-inline-math": 3
+  },
+  "options": {},
+  "source": {
+    "pages": 36,
+    "title": "Lyapunov spectrum of random neural networks"
+  }
+}

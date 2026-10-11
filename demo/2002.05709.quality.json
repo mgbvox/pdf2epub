@@ -1,0 +1,35 @@
+{
+  "metrics": {
+    "word_recall": 0.8234,
+    "word_precision": 0.9743,
+    "bigram_recall": 0.7909,
+    "bigram_precision": 0.9358,
+    "order_score": 0.9403
+  },
+  "counts": {
+    "paragraphs": 283,
+    "headings": 32,
+    "figures": 26,
+    "tables": 16,
+    "equations": 4,
+    "text_boxes": 0,
+    "algorithms": 1,
+    "footnotes": 14,
+    "inline_math_images": 51,
+    "images": 99
+  },
+  "issue_counts": {
+    "blank-image": 2,
+    "caption-gap": 2,
+    "long-word": 1,
+    "split-paragraph": 29,
+    "stray-fragment": 8,
+    "tall-inline-math": 7,
+    "wide-inline-math": 1
+  },
+  "options": {},
+  "source": {
+    "pages": 20,
+    "title": "A Simple Framework for Contrastive Learning of Visual Representations"
+  }
+}

@@ -94,7 +94,7 @@ class HtmlWriter:
                         while depth > lvl:
                             out.append("</ul></li>")
                             depth -= 1
-                    out.append(f'<li id="{b.id}"><p class="li">{self._inline(b)}</p>')
+                    out.append(f'<li id="{b.id}"{_pg(b)}><p class="li">{self._inline(b)}</p>')
                     continue
                 if depth and isinstance(b, (Paragraph, Visual)) and getattr(b, "style", "").startswith("in-list"):
                     out.append(self._block(b))
@@ -246,13 +246,13 @@ class HtmlWriter:
         p: Paragraph = b
         inner = self._inline(p)
         if p.kind == "title":
-            return f'<h1 class="title" id="{p.id}">{inner}</h1>'
+            return f'<h1 class="title" id="{p.id}"{_pg(p)}>{inner}</h1>'
         if p.kind == "heading":
             n = min(6, p.level + 1)
-            return f'<h{n} id="{p.id}">{inner}</h{n}>'
+            return f'<h{n} id="{p.id}"{_pg(p)}>{inner}</h{n}>'
         if p.kind == "algline":
             indent = f' style="margin-left:{p.level / 10:.1f}em"' if p.level > 0 else ""
-            return f'<p id="{p.id}" class="algline"{indent}>{inner}</p>'
+            return f'<p id="{p.id}" class="algline"{indent}{_pg(p)}>{inner}</p>'
         cls = {
             "p": "", "caption": "caption", "centered": "center", "code": "code", "bib": "bib",
             "note": "note", "boxline": "boxline",
@@ -261,7 +261,7 @@ class HtmlWriter:
         if "in-list" in classes:
             classes = classes.replace("in-list", "inlist")
         cattr = f' class="{classes}"' if classes else ""
-        return f'<p id="{p.id}"{cattr}>{inner}</p>'
+        return f'<p id="{p.id}"{cattr}{_pg(p)}>{inner}</p>'
 
     def _visual(self, v: Visual) -> str:
         parts: list[str] = []
@@ -272,10 +272,10 @@ class HtmlWriter:
             img = self._equation_image(v)
             if img is None:
                 return ""
-            return f'<div class="eq" id="{v.id}">{img}</div>'
+            return f'<div class="eq" id="{v.id}"{_pg(v)}>{img}</div>'
         if v.kind in ("textbox", "algorithm"):
             wrap = "boxwrap algo" if v.kind == "algorithm" else "boxwrap"
-            parts.append(f'<div class="{wrap}" id="{v.id}">')
+            parts.append(f'<div class="{wrap}" id="{v.id}"{_pg(v)}>')
             if v.caption_above and cap:
                 parts.append(cap)
             for gi, group in enumerate(v.box_groups):
@@ -289,7 +289,7 @@ class HtmlWriter:
             return "\n".join(parts)
         imgs = self._figure_images(v)
         cls = "figure table" if v.kind == "table" else "figure"
-        parts.append(f'<div class="{cls}" id="{v.id}">')
+        parts.append(f'<div class="{cls}" id="{v.id}"{_pg(v)}>')
         if v.caption_above and cap:
             parts.append(cap)
         for im in imgs:
@@ -586,6 +586,12 @@ def _safe_uri(uri: str) -> str | None:
         else:
             return None
     return quote(uri, safe=":/?#[]@!$&'()*+,;=%~")
+
+
+def _pg(block) -> str:
+    """Source page (1-based) as a data attribute: lets QA tools map EPUB blocks back to the PDF."""
+    page = getattr(block, "page", None)
+    return f' data-page="{page + 1}"' if isinstance(page, int) and page >= 0 else ""
 
 
 def _marker_text(m: str) -> str:

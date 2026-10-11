@@ -1,0 +1,30 @@
+{
+  "metrics": {
+    "word_recall": 0.8645,
+    "word_precision": 0.9724,
+    "bigram_recall": 0.8435,
+    "bigram_precision": 0.9487,
+    "order_score": 0.9922
+  },
+  "counts": {
+    "paragraphs": 184,
+    "headings": 30,
+    "figures": 14,
+    "tables": 5,
+    "equations": 3,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 0,
+    "inline_math_images": 56,
+    "images": 79
+  },
+  "issue_counts": {
+    "split-paragraph": 6,
+    "stray-fragment": 10
+  },
+  "options": {},
+  "source": {
+    "pages": 18,
+    "title": "An Embarrassingly Simple Defense Against LLM Abliteration Attacks"
+  }
+}

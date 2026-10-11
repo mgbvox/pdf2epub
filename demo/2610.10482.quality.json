@@ -1,0 +1,31 @@
+{
+  "metrics": {
+    "word_recall": 0.868,
+    "word_precision": 0.9937,
+    "bigram_recall": 0.8596,
+    "bigram_precision": 0.9841,
+    "order_score": 1.0
+  },
+  "counts": {
+    "paragraphs": 154,
+    "headings": 23,
+    "figures": 9,
+    "tables": 4,
+    "equations": 0,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 0,
+    "inline_math_images": 1,
+    "images": 24
+  },
+  "issue_counts": {
+    "hyphen-leftover": 1,
+    "split-paragraph": 2,
+    "stray-fragment": 9
+  },
+  "options": {},
+  "source": {
+    "pages": 24,
+    "title": "Truecell reproduces R Seurat's single-cell analysis outputs natively in the Python ecosystem"
+  }
+}

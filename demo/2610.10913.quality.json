@@ -1,0 +1,31 @@
+{
+  "metrics": {
+    "word_recall": 0.9724,
+    "word_precision": 0.9912,
+    "bigram_recall": 0.9339,
+    "bigram_precision": 0.952,
+    "order_score": 0.993
+  },
+  "counts": {
+    "paragraphs": 258,
+    "headings": 42,
+    "figures": 8,
+    "tables": 6,
+    "equations": 13,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 0,
+    "inline_math_images": 14,
+    "images": 43
+  },
+  "issue_counts": {
+    "hyphen-leftover": 4,
+    "split-paragraph": 15,
+    "stray-fragment": 3
+  },
+  "options": {},
+  "source": {
+    "pages": 30,
+    "title": "Toward Reliable Patient-Specific Aortic Strain Mapping from 4D CTA: Validation, Spectral Structure, and Clinical Potential"
+  }
+}

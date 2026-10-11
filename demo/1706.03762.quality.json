@@ -1,0 +1,30 @@
+{
+  "metrics": {
+    "word_recall": 0.8873,
+    "word_precision": 0.9911,
+    "bigram_recall": 0.8633,
+    "bigram_precision": 0.9644,
+    "order_score": 0.9714
+  },
+  "counts": {
+    "paragraphs": 128,
+    "headings": 27,
+    "figures": 5,
+    "tables": 4,
+    "equations": 5,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 6,
+    "inline_math_images": 12,
+    "images": 27
+  },
+  "issue_counts": {
+    "hard-breaks": 2,
+    "split-paragraph": 1
+  },
+  "options": {},
+  "source": {
+    "pages": 15,
+    "title": "Attention Is All You Need"
+  }
+}

@@ -135,7 +135,7 @@ def test_footnotes_headings_and_hyphenation(tmp_path):
     plain = re.sub(r"<[^>]+>", "", text)
     assert "multiple word" in plain
     assert "fine-tuned compound" in plain
-    assert re.search(r'<h2 id="h\d+">1 Introduction</h2>', text)
+    assert re.search(r"<h2 id=\"h\d+\"[^>]*>1 Introduction</h2>", text)
     assert 'epub:type="footnote"' in text and "This is the footnote text." in text
     assert 'epub:type="noteref"' in text
     nav = epub_texts(out)["OEBPS/nav.xhtml"]

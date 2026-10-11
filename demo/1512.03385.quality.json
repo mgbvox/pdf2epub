@@ -1,0 +1,31 @@
+{
+  "metrics": {
+    "word_recall": 0.8407,
+    "word_precision": 0.977,
+    "bigram_recall": 0.8154,
+    "bigram_precision": 0.9477,
+    "order_score": 0.9119
+  },
+  "counts": {
+    "paragraphs": 185,
+    "headings": 23,
+    "figures": 7,
+    "tables": 17,
+    "equations": 2,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 6,
+    "inline_math_images": 20,
+    "images": 50
+  },
+  "issue_counts": {
+    "caption-gap": 2,
+    "hyphen-leftover": 1,
+    "split-paragraph": 2
+  },
+  "options": {},
+  "source": {
+    "pages": 12,
+    "title": "Deep Residual Learning for Image Recognition"
+  }
+}

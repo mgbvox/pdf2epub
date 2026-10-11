@@ -1,0 +1,32 @@
+{
+  "metrics": {
+    "word_recall": 0.8813,
+    "word_precision": 0.9297,
+    "bigram_recall": 0.824,
+    "bigram_precision": 0.8692,
+    "order_score": 0.981
+  },
+  "counts": {
+    "paragraphs": 141,
+    "headings": 18,
+    "figures": 4,
+    "tables": 0,
+    "equations": 30,
+    "text_boxes": 0,
+    "algorithms": 2,
+    "footnotes": 1,
+    "inline_math_images": 152,
+    "images": 189
+  },
+  "issue_counts": {
+    "split-paragraph": 9,
+    "stray-fragment": 4,
+    "tall-inline-math": 18,
+    "wide-inline-math": 2
+  },
+  "options": {},
+  "source": {
+    "pages": 15,
+    "title": "Adam: A Method for Stochastic Optimization"
+  }
+}

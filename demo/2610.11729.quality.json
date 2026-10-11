@@ -1,0 +1,31 @@
+{
+  "metrics": {
+    "word_recall": 0.9452,
+    "word_precision": 0.9629,
+    "bigram_recall": 0.9061,
+    "bigram_precision": 0.923,
+    "order_score": 0.9808
+  },
+  "counts": {
+    "paragraphs": 245,
+    "headings": 24,
+    "figures": 17,
+    "tables": 4,
+    "equations": 0,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 0,
+    "inline_math_images": 0,
+    "images": 21
+  },
+  "issue_counts": {
+    "hyphen-leftover": 1,
+    "split-paragraph": 18,
+    "stray-fragment": 1
+  },
+  "options": {},
+  "source": {
+    "pages": 36,
+    "title": "arXiv"
+  }
+}

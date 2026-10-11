@@ -1,0 +1,32 @@
+{
+  "metrics": {
+    "word_recall": 0.9435,
+    "word_precision": 0.9886,
+    "bigram_recall": 0.9318,
+    "bigram_precision": 0.9763,
+    "order_score": 0.9857
+  },
+  "counts": {
+    "paragraphs": 342,
+    "headings": 67,
+    "figures": 8,
+    "tables": 17,
+    "equations": 39,
+    "text_boxes": 0,
+    "algorithms": 1,
+    "footnotes": 0,
+    "inline_math_images": 30,
+    "images": 99
+  },
+  "issue_counts": {
+    "caption-gap": 1,
+    "split-paragraph": 10,
+    "stray-fragment": 11,
+    "wide-inline-math": 4
+  },
+  "options": {},
+  "source": {
+    "pages": 43,
+    "title": "A Shortcut to Structure in AlphaFold 3"
+  }
+}
