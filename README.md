@@ -6,13 +6,13 @@ Convert PDFs, especially scientific papers, into reflowable EPUBs that are pleas
 - **Formulas, figures and tables are rendered straight from the PDF's vector content** at high resolution, so they look exactly like the original. Tap to zoom on Kindle.
 - Simple inline math (`x`, `n = 100`, `W_out`) stays as real, searchable text. Anything two-dimensional (fractions, stacked scripts, accents, radicals) becomes a small image cropped from the PDF and aligned to the text baseline.
 - Boxed text (prompts, examples, code) and pseudo-code (`Algorithm 1`) are rebuilt as styled text, not screenshots, so they stay readable on a narrow screen. Original colors and line structure are kept.
-- Footnotes become Kindle pop-up notes. Citations, figure, table and equation references and URLs become tappable links. The PDF outline becomes the table of contents.
+- Footnotes become Kindle pop-up notes. Hyperlinks already in the PDF (hyperref citations, figure, table and equation references, URLs) become tappable links. The table of contents is built from the detected headings, matched against the PDF outline when there is one.
 
 | Inline math as text | Display equation | Boxed example |
 | --- | --- | --- |
 | ![Inline math rendered on a phone](docs/phone-inline-math.png) | ![Display equation split for a narrow screen](docs/phone-equation.png) | ![Boxed prompt reflowed as text](docs/phone-text-box.png) |
 
-*Pixel-sized renders of [`demo/2406.11717v3.epub`](demo/), converted from [`demo/2406.11717v3.pdf`](demo/).*
+*Pixel-sized renders of [`demo/2406.11717v3.epub`](demo/2406.11717v3.epub), converted from [`demo/2406.11717v3.pdf`](demo/2406.11717v3.pdf). More papers, with their quality scores, are in [`demo/`](demo/README.md).*
 
 ## Install
 
@@ -31,6 +31,7 @@ pdf2epub convert paper.pdf                     # writes paper.epub next to the P
 pdf2epub convert paper.pdf -o ~/Books/paper.epub --title "My Title" -a "First Author" -a "Second Author"
 pdf2epub convert paper.pdf --pages 1-12        # only some pages
 pdf2epub inspect paper.pdf --out debug/        # draw detected layout onto page images
+pdf2epub check paper.pdf paper.epub            # score a conversion: fidelity metrics + defect lint
 ```
 
 | Option | Default | Effect |
@@ -40,9 +41,15 @@ pdf2epub inspect paper.pdf --out debug/        # draw detected layout onto page 
 | `--split-panels / --no-split-panels` | on | Stack side-by-side sub-figures vertically for portrait screens. |
 | `--rotate-wide` | off | Rotate very wide tables and figures 90° (read by turning the phone). |
 | `--cover / --no-cover` | on | Use the first page as the cover image. |
-| `--title`, `--author/-a`, `--language` | from the PDF | Override metadata. |
+| `--output/-o` | next to the PDF | Output `.epub` path. |
+| `--pages` | all | Page selection, 1-based, e.g. `1-5,8`. |
+| `--title`, `--author/-a` | PDF metadata, else detected from the first page | Override title and authors. |
+| `--language` | `en` | Language code written to the EPUB metadata. |
+| `--quiet/-q` | off | Only print errors. |
 
-`pdf2epub inspect` prints a per-page summary (columns, figures, tables, equations, footnotes) and writes annotated PNGs showing every detected region and the reading order. Use it to see why a page converted the way it did.
+`pdf2epub inspect` prints a per-page summary (columns, figures, tables, equations, footnotes) and writes annotated PNGs (`page-NNN.png`) showing every detected region and the reading order. Use it to see why a page converted the way it did. Colours: figure blue, table green, text box purple, equation orange, algorithm black, caption cyan, text grey with reading-order numbers, footnote brown, dropped running heads red, column bounds magenta.
+
+`pdf2epub check` compares the EPUB's text with the PDF (word and bigram recall/precision, reading-order score) and lists likely defects (split paragraphs, stray fragments, unjoined hyphens, oversized inline formulas, blank images, missing captions…) with the PDF page of each, so they can be traced with `inspect --pages N`.
 
 ## Library
 
@@ -53,7 +60,7 @@ report = convert("paper.pdf", "paper.epub", ConvertOptions(dpi=400, inline_math=
 print(report.figures, report.tables, report.equations, report.footnotes)
 ```
 
-`pdf2epub.analyze(pdf)` returns the intermediate page layouts and `pdf2epub.build_document(...)` the document model, if you want to plug the analysis into something else.
+`ConvertOptions` also takes `pages` (a list of **0-based** page indices), `split_panels`, `rotate_wide`, `cover`, `title`, `authors` and `language`; `convert()` accepts a `progress` callback. To plug the analysis into something else, `doc, pages, stats, layouts = pdf2epub.analyze(pdf, pages=None)` runs extraction and layout analysis, and `pdf2epub.build_document(doc, pages, stats, layouts)` returns the document model (`pdf2epub.model.Document`). `pdf2epub.quality.evaluate(pdf, epub)` scores a conversion.
 
 ## Reading on Kindle (Android / Pixel)
 
@@ -62,6 +69,8 @@ The Kindle app does not open `.epub` files tapped in a file manager. Send them w
 - Android share sheet: long-press the file → Share → Kindle.
 - Email the file as an attachment to your `@kindle.com` address.
 - Upload it at <https://www.amazon.com/sendtokindle>.
+
+To get a file onto the phone in the first place, a direct download link works well: every EPUB committed to this repository is downloadable at `https://github.com/mgbvox/pdf2epub/raw/main/demo/<name>.epub`.
 
 ## How it works
 
@@ -76,17 +85,40 @@ The Kindle app does not open `.epub` files tapped in a file manager. Send them w
 ## Development
 
 ```bash
-pip install -e ".[dev]"
-pytest                                        # synthetic-PDF test suite
-EPUBCHECK_JAR=/path/to/epubcheck.jar pytest   # also validate output with EPUBCheck
+pip install -e ".[dev,qa]"                    # qa: playwright for phone previews
+pytest -m "not corpus"                        # fast synthetic-PDF test suite
+pytest -m corpus                              # the corpus quality gate (slow, see below)
+EPUBCHECK_JAR=/path/to/epubcheck.jar pytest   # also validate output with EPUBCheck (needs java)
 PDF2EPUB_SAMPLE_PDF=demo/2406.11717v3.pdf pytest   # also convert a real paper
 ```
 
-The converter has been checked on a mixed corpus of arXiv papers: NeurIPS and ICLR single-column, ACL, CVPR and ICML two-column, math-heavy proofs, and q-bio papers including a Google-Docs-generated PDF. Every output passes EPUBCheck with no errors.
+### Quality gate and corpus
+
+[`demo/`](demo/README.md) keeps every conversion that was delivered or used for development: the input PDF, the accepted EPUB and a `.quality.json` baseline with its fidelity metrics and lint counts. It currently holds 12 CS and q-bio arXiv papers in NeurIPS, ICLR, ACL, CVPR and ICML layouts, including a Google-Docs PDF and math-heavy appendices.
+
+**Policy: a change to the converter is committed only if it does not make any of these conversions worse, and makes at least one better.** The gate re-converts every PDF with the current code and compares it with its baseline:
+
+```bash
+python tools/corpus_gate.py                   # check every entry (parallel); non-zero exit on regression
+python tools/corpus_gate.py --keep /tmp/new   # also keep the new EPUBs
+python tools/epub_diff.py demo/X.epub /tmp/new/X.epub --out /tmp/diff   # what exactly changed (text + images)
+python tools/corpus_gate.py --update          # accept: rewrite demo/ EPUBs and baselines (refuses on regressions)
+python tools/corpus_gate.py --add paper.pdf --name 2505.19056          # add a new conversion to the corpus
+python tools/corpus_gate.py --rescore         # after changing quality.py itself: re-score without converting
+```
+
+Commit `--update` output together with the code change, so the baseline diff shows what improved. A regression is any metric dropping by more than 0.002, more lint findings in total, or any more blank images, duplicate paragraphs or unjoined hyphens.
+
+Other tools: `tools/phone_preview.py` screenshots chapters at a Pixel-sized viewport (light or `--dark`), and `tools/run_corpus.py` batch-converts arbitrary arXiv ids into `.corpus/` for exploration.
+
+### For AI agents
+
+[`.claude/skills/pdf2epub/SKILL.md`](.claude/skills/pdf2epub/SKILL.md) is a skill for coding agents. It covers converting a paper, the quality-review and refinement pass, changing the converter under the corpus gate, and delivering an EPUB to a phone. [`reference/architecture.md`](.claude/skills/pdf2epub/reference/architecture.md) maps the modules, heuristics and known traps.
 
 ## Limitations
 
 - Scanned PDFs (no text layer) are not supported; run OCR first.
 - Tables are kept as faithful images, not rebuilt as HTML tables. Wide tables shrink to the screen width; tap to zoom, or use `--rotate-wide`.
 - Layout analysis is heuristic. Unusual templates may misplace a caption or split a figure. `pdf2epub inspect` shows what was detected.
+- Footnotes are detected only when a separator rule sits above them. Only bullet-glyph lists become list markup; numbered lists stay paragraphs. Plain-text citations without link annotations are not linked.
 - The Kindle renderer itself could not be tested here. Output was validated with EPUBCheck and visually checked in Chromium at a Pixel-sized viewport (412×915 CSS px).

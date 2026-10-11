@@ -154,6 +154,12 @@ a second column, so keep that restriction.
 
 ## Known open issues (backlog)
 
+- `get_drawings` reports clipped paths at full size, so plots drawn with a clip path can form one huge
+  "ink" cluster (2002.05709 p5: a cluster spanning both columns swallows Figure 7). The same paper's
+  side-by-side captions on p15 (Figure B.3 / B.4) are read interleaved. Fix: honour clip rectangles
+  (`get_drawings(extended=True)`); then a figure caption can be limited to content in its own column,
+  as table captions already are (`_region_near`, `same_column`).
+
 - `htmlgen` collapses runs of NBSP, so indentation in code paragraphs is lost.
 - KaTeX font names containing `_` never match the `fonts.py` math patterns.
 - Footnotes are detected only with a separator rule. Numbered lists stay plain paragraphs; only bullet
