@@ -11,7 +11,7 @@ import pymupdf
 
 from . import geometry as G
 from .analysis import DocStats
-from .extract import Link, PageData, Row
+from .extract import Link, PageData, Row, sort_glyphs
 from .geometry import Box
 from .layout import BULLET_CHARS, PageLayout, Region, column_of, top_level_frames
 from .model import Block, Document, FootnoteBlock, Line, Paragraph, Visual
@@ -87,7 +87,10 @@ class StructureBuilder:
         self._post_process()
         self._build_footnotes()
         meta = self.doc.metadata or {}
-        title = (meta.get("title") or "").strip() or self.title or "Untitled"
+        meta_title = (meta.get("title") or "").strip()
+        if _junk_title(meta_title) and self.title:
+            meta_title = ""
+        title = meta_title or self.title or "Untitled"
         authors = [a.strip() for a in re.split(r"[;,]| and ", meta.get("author") or "") if a.strip()] or self.authors
         return Document(
             title=title, authors=authors, language="en", blocks=self.blocks, footnotes=self.footnotes,
@@ -105,7 +108,7 @@ class StructureBuilder:
             prev = out[-1].line if out and out[-1].line is not None else None
             if prev is not None and prev.row_id == it.row_id:
                 prev.glyphs.extend(it.glyphs)
-                prev.glyphs.sort(key=lambda g: (g.x0, -g.level))
+                sort_glyphs(prev.glyphs)
                 prev.box = G.union([prev.box, it.box])
                 prev.links = _links_for(prev.box, links)
                 continue
@@ -120,12 +123,24 @@ class StructureBuilder:
             if not block:
                 return
             left = min(l.x0 for l in block)
+            styles = [(l.text_size, _is_bold_line(l)) for l in block]
+
+            def alike(a: tuple, b: tuple) -> bool:
+                return a[1] == b[1] and abs(a[0] - b[0]) <= 0.15 * max(a[0], b[0])
+
             right_all = max(l.x1 for l in block)
-            seen_right = None
-            for l in block:
-                ref = seen_right if seen_right is not None else right_all
+            for k, l in enumerate(block):
+                # right edge reached by earlier lines; for running text only lines of the same
+                # style count (a long heading above a paragraph wrapped beside a figure must not
+                # widen the paragraph's frame), bold lines (headings) see the whole block
+                any_style = max(o.x1 for o in block[:k]) if k else right_all
+                if styles[k][1]:
+                    ref = any_style
+                else:
+                    seen = [o.x1 for o, st in zip(block[:k], styles[:k]) if alike(st, styles[k])]
+                    pool = [o.x1 for o, st in zip(block, styles) if alike(st, styles[k])]
+                    ref = max(seen) if seen else min(max(pool), any_style)
                 l.frame = (left, max(ref, l.x1))
-                seen_right = l.x1 if seen_right is None else max(seen_right, l.x1)
             block.clear()
 
         for e in entries:
@@ -201,6 +216,8 @@ class StructureBuilder:
                 if l is None or e.heading:
                     continue
                 if not self._heading_like(entries, i):
+                    if self._heading_wrap(entries, i):
+                        e.heading = entries[i - 1].heading
                     continue
                 key = _style_key(l)
                 level = matched_sizes.get(key)
@@ -216,6 +233,25 @@ class StructureBuilder:
                         level = max(matched_sizes.values(), default=2) if matched_sizes else 3
                         level = max(level, 2)
                 e.heading = level
+
+    def _heading_wrap(self, entries: list[_Entry], i: int) -> bool:
+        """Second line of a wrapped heading: same style, tight below a heading line."""
+        if i == 0:
+            return False
+        prev, l = entries[i - 1], entries[i].line
+        if not prev.heading or prev.title or prev.line is None or prev.line.page != l.page:
+            return False
+        if _style_key(prev.line) != _style_key(l) or not (_is_bold_line(l) or l.size >= 1.12 * self.body):
+            return False
+        text = l.text.strip()
+        if not (0 < len(text) <= 80 and 0 <= l.core[1] - prev.line.core[3] < 0.6 * l.size and not text.endswith((".", ",", ";"))):
+            return False
+        if len(prev.line.text.split()) + len(text.split()) > 16:
+            return False  # a run of emphasised prose, not a heading
+        nxt = entries[i + 1].line if i + 1 < len(entries) else None
+        # a heading ends after its wrapped line; a third tight line of the same style means prose
+        return not (nxt is not None and nxt.page == l.page and _style_key(nxt) == _style_key(l)
+                    and 0 <= nxt.core[1] - l.core[3] < 0.6 * l.size)
 
     def _heading_like(self, entries: list[_Entry], i: int) -> bool:
         l = entries[i].line
@@ -425,7 +461,8 @@ class StructureBuilder:
     def _continues(self, cur: _Open, line: Line) -> bool:
         prev = cur.last
         size = line.size
-        if abs(prev.size - size) > 0.15 * max(prev.size, size):
+        ps, ls = prev.text_size, line.text_size
+        if abs(ps - ls) > 0.15 * max(ps, ls):
             return False
         if line.row_id in self._grid_rows.get(line.page, ()) or prev.row_id in self._grid_rows.get(prev.page, ()):
             if not (line.page == prev.page and line.core[1] > prev.core[1] and G.h_overlap(line.box, prev.box) > 0):
@@ -441,6 +478,8 @@ class StructureBuilder:
             return False
         if same_flow and G.h_overlap(line.box, prev.box) > 0:
             gap = line.core[1] - prev.core[3]
+            # tall inline math (radicals, fractions) pushes lines apart without starting a paragraph
+            gap -= max(0.0, line.core[1] - line.box[1] - 0.3 * size) + max(0.0, prev.box[3] - prev.core[3] - 0.15 * size)
             normal = self.step - 0.96 * size
             if gap > normal + 0.35 * size:
                 return False
@@ -641,6 +680,19 @@ def ended_short(prev: Line, line: Line) -> bool:
         word = end - gs[0].x0
     word *= prev.size / max(line.size, 0.1)
     return remaining > word + 0.45 * prev.size
+
+
+def _junk_title(t: str) -> bool:
+    """PDF metadata titles that are file names or tool defaults rather than the paper's title."""
+    t = t.strip()
+    if not t or len(t.split()) <= 1:
+        return True
+    low = t.lower()
+    return bool(
+        re.search(r"\.(pdf|docx?|tex|dvi|ps)$", low)
+        or low.startswith(("microsoft word", "untitled", "arxiv", "paper", "main", "manuscript"))
+        or re.fullmatch(r"[\w\-. ]*\d{4}[\w\-. ]*", low) and len(t.split()) <= 2
+    )
 
 
 def _links_for(box: Box, links: list[Link]) -> list[Link]:

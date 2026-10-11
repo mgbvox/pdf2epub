@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from . import geometry as G
-from .extract import Glyph, Link, Row
+from .extract import Glyph, Link, Row, sort_glyphs
 from .geometry import Box
 from .layout import Region
 
@@ -26,7 +26,7 @@ class Line:
     @classmethod
     def from_segments(cls, segs: list[Row], links: list[Link]) -> "Line":
         glyphs = [g for s in segs for g in s.glyphs]
-        glyphs.sort(key=lambda g: (g.x0, -g.level))
+        sort_glyphs(glyphs)
         box = G.union(s.box for s in segs)
         return cls(glyphs, segs[0].baseline, segs[0].size, segs[0].page, box, segs[0].row_id, links)
 
@@ -47,6 +47,12 @@ class Line:
         from .extract import glyph_text
 
         return glyph_text(self.glyphs, self.size)
+
+    @property
+    def text_size(self) -> float:
+        from .extract import text_size
+
+        return text_size(self.glyphs, self.size)
 
 
 @dataclass(eq=False)

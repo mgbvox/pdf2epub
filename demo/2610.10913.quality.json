@@ -1,13 +1,13 @@
 {
   "metrics": {
-    "word_recall": 0.9735,
-    "word_precision": 0.9917,
-    "bigram_recall": 0.9615,
-    "bigram_precision": 0.9794,
+    "word_recall": 0.9745,
+    "word_precision": 0.9928,
+    "bigram_recall": 0.967,
+    "bigram_precision": 0.9852,
     "order_score": 0.993
   },
   "counts": {
-    "paragraphs": 258,
+    "paragraphs": 243,
     "headings": 42,
     "figures": 8,
     "tables": 6,

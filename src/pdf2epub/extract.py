@@ -13,6 +13,18 @@ from .geometry import Box
 
 LIGATURES = {"ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl", "ﬅ": "st", "ﬆ": "st", "Ꜳ": "AA", "Ꜵ": "AO", "Ꜷ": "AU", "Ꜹ": "AV", "Ꜽ": "AY", "Œ": "Œ"}
 
+# TeX's cmex/lmex fonts often lack a ToUnicode map, so MuPDF reports the raw
+# code, which falls on ASCII letters for big operators, radicals and delimiters
+# (OT1 cmex layout). A properly mapped glyph is never an ASCII letter, so only
+# letters are translated.
+CMEX_LETTERS = {
+    **dict.fromkeys("FG", "\u2a06"), **dict.fromkeys("HI", "\u222e"), **dict.fromkeys("JK", "\u2a00"),
+    **dict.fromkeys("LM", "\u2a01"), **dict.fromkeys("NO", "\u2a02"), **dict.fromkeys("PX", "\u2211"),
+    **dict.fromkeys("QY", "\u220f"), **dict.fromkeys("RZ", "\u222b"), "S": "\u22c3", "T": "\u22c2",
+    "U": "\u228e", "V": "\u22c0", "W": "\u22c1", "a": "\u2210", **dict.fromkeys("pqrs", "\u221a"),
+    "h": "[", "i": "]", "j": "\u230a", "k": "\u230b", "l": "\u2308", "m": "\u2309", "n": "{", "o": "}",
+}
+
 TEXT_FLAGS = (
     pymupdf.TEXT_PRESERVE_LIGATURES
     | pymupdf.TEXT_PRESERVE_WHITESPACE
@@ -38,10 +50,30 @@ class Glyph:
     info: FontInfo | None = None
     math: bool = False  # set by document analysis
     level: int = 0  # 0 = base, 1 = superscript, -1 = subscript (relative to row)
+    seq: int = 0  # position in the page's content stream
 
     @property
     def box(self) -> Box:
         return (self.x0, self.y0, self.x1, self.y1)
+
+
+def sort_glyphs(glyphs: list[Glyph]) -> None:
+    """Sort glyphs left to right in place, keeping content-stream order for near ties.
+
+    Some fonts start a glyph a hair left of the end of the previous one (in
+    "suffix" the x can begin 0.01pt before the i of an "fi" pair), which a
+    plain x sort would turn into "suffxi".
+    """
+    glyphs.sort(key=lambda g: (g.x0, -g.level))
+    for k in range(1, len(glyphs)):
+        j = k
+        while j > 0:
+            a, b = glyphs[j - 1], glyphs[j]
+            if a.level == b.level and b.seq < a.seq and b.x0 - a.x0 < 0.05 * max(a.size, b.size):
+                glyphs[j - 1], glyphs[j] = b, a
+                j -= 1
+            else:
+                break
 
 
 @dataclass(slots=True, eq=False)
@@ -100,6 +132,21 @@ class Row:
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"Row(p{self.page} {self.box[0]:.0f},{self.box[1]:.0f}-{self.box[2]:.0f},{self.box[3]:.0f} s={self.size:.1f} {self.text[:50]!r})"
+
+
+def text_size(glyphs: list[Glyph], default: float) -> float:
+    """Font size of a line's running text, robust to small caps.
+
+    Small caps are set as uppercase letters at a reduced size, so a short line
+    such as "and WINOGRANDE." would otherwise look like smaller text. Lowercase
+    letters are never small caps, so they decide when present.
+    """
+    text = [g for g in glyphs if g.level == 0 and not g.math and not g.font.upper().startswith(_EXT_FONT)]
+    lower = [g.size for g in text if g.c.islower()]
+    if lower:
+        return max(lower)
+    other = [g.size for g in text if g.c.isalnum()]
+    return max(other) if other else default
 
 
 def needs_space(prev: Glyph, g: Glyph, size: float) -> bool:
@@ -170,6 +217,7 @@ def extract_fragments(page: pymupdf.Page) -> tuple[list[Fragment], list[Glyph]]:
     raw = page.get_text("rawdict", flags=TEXT_FLAGS)
     frags: list[Fragment] = []
     rotated: list[Glyph] = []
+    seq = 0
     for block in raw.get("blocks", []):
         if block.get("type", 0) != 0:
             continue
@@ -183,8 +231,11 @@ def extract_fragments(page: pymupdf.Page) -> tuple[list[Fragment], list[Glyph]]:
                 font = span["font"]
                 flags = int(span["flags"])
                 info = font_info(font, flags)
+                cmex = info.name.upper().startswith(("CMEX", "LMEX"))
                 for ch in span.get("chars", []):
                     c = LIGATURES.get(ch["c"], ch["c"])
+                    if cmex:
+                        c = CMEX_LETTERS.get(c, c)
                     if c.isspace():
                         pending_space = True
                         continue
@@ -194,8 +245,9 @@ def extract_fragments(page: pymupdf.Page) -> tuple[list[Fragment], list[Glyph]]:
                         continue
                     g = Glyph(
                         c, x0, y0, x1, y1, ox, oy, size, info.name, int(span["color"]), flags,
-                        space_before=pending_space, info=info,
+                        space_before=pending_space, info=info, seq=seq,
                     )
+                    seq += 1
                     pending_space = False
                     glyphs.append(g)
             if not glyphs:
@@ -245,14 +297,27 @@ def _make_fragment(glyphs: list[Glyph]) -> Fragment:
 _EXT_FONT = ("CMEX", "LMEX", "EUEX", "TXEX", "PXEX", "STIXSIZE", "KATEX_SIZE", "MTEX", "ESINT", "NTXEXX", "RTXEX")
 
 
+def _ext_glyph(g: Glyph) -> bool:
+    return g.font.upper().startswith(_EXT_FONT) or g.c in "√∑∏∫∮⋃⋂⨁⨂"
+
+
 def is_extension_fragment(f: Fragment) -> bool:
-    """Fragment made only of TeX math-extension glyphs (big delimiters, radicals, sums)."""
-    return all(g.font.upper().startswith(_EXT_FONT) or g.c in "√∑∏∫∮⋃⋂⨁⨂" for g in f.glyphs)
+    """Fragment made of TeX math-extension glyphs (big delimiters, radicals, sums).
+
+    An operator followed only by its smaller scripts or limits (an inline
+    sum with its upper limit in one MuPDF line) counts too: its baseline comes
+    from the hanging operator glyph, not from the text line.
+    """
+    gs = f.glyphs
+    if all(_ext_glyph(g) for g in gs):
+        return True
+    return bool(gs) and _ext_glyph(gs[0]) and all(_ext_glyph(g) or g.size < 0.9 * gs[0].size for g in gs[1:])
 
 
 def build_rows(frags: list[Fragment], page_index: int) -> list[Row]:
     """Group fragments into visual rows, attaching sub/superscripts to their base row."""
-    order = sorted(frags, key=lambda f: (-f.size, f.baseline, f.box[0]))
+    # radicals and big operators go last so that every text row they could belong to exists
+    order = sorted(frags, key=lambda f: (is_extension_fragment(f), -f.size, f.baseline, f.box[0]))
     rows: list[dict] = []  # {"size","baseline","frags"}
 
     def best_row(f: Fragment) -> tuple[dict | None, bool]:
@@ -266,8 +331,11 @@ def build_rows(frags: list[Fragment], page_index: int) -> list[Row]:
             ratio = f.size / rs
             if ext and r["frags"] and not all(is_extension_fragment(x) for x in r["frags"]):
                 # radicals / big operators: origin is not on the text baseline
-                if -1.7 * rs <= shift <= 0.9 * rs and any(G.h_gap(f.box, rf.box) < 0.75 * rs for rf in r["frags"]):
-                    cost = abs(shift) / rs + 0.2
+                if -1.7 * rs <= shift <= 0.9 * rs and any(G.h_gap(f.box, rf.box) < 2.0 * rs for rf in r["frags"]):
+                    # TeX hangs these glyphs from their origin: compare the glyph's centre with
+                    # the row's math axis instead of the origin with the baseline
+                    centre = (f.box[1] + f.box[3]) / 2
+                    cost = abs(centre - (r["baseline"] - 0.25 * rs)) / rs + 0.2
                     if cost < best_cost:
                         best, best_cost = r, cost
                 continue
@@ -356,7 +424,7 @@ def build_rows(frags: list[Fragment], page_index: int) -> list[Row]:
                 g.level = -1
             else:
                 g.level = 0
-        glyphs.sort(key=lambda g: (g.x0, -g.level))
+        sort_glyphs(glyphs)
         out.append(Row(glyphs, bl, size, page_index))
     out.sort(key=lambda r: (r.baseline, r.box[0]))
     return out
@@ -419,6 +487,8 @@ def extract_graphics(page: pymupdf.Page) -> list[Graphic]:
         box = (r.x0, r.y0, r.x1, r.y1)
         if not G.overlaps(box, pbox, tol=1):
             continue
+        # paths may extend far beyond the page (clipped plots); only the visible part counts
+        box = (max(box[0], pbox[0]), max(box[1], pbox[1]), min(box[2], pbox[2]), min(box[3], pbox[3]))
         fill = d.get("fill")
         stroke = d.get("color")
         width = float(d.get("width") or 0.0)

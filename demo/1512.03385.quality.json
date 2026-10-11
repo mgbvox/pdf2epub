@@ -1,14 +1,14 @@
 {
   "metrics": {
-    "word_recall": 0.8418,
-    "word_precision": 0.9773,
-    "bigram_recall": 0.8181,
-    "bigram_precision": 0.9499,
-    "order_score": 0.9119
+    "word_recall": 0.8437,
+    "word_precision": 0.9785,
+    "bigram_recall": 0.8214,
+    "bigram_precision": 0.9526,
+    "order_score": 0.9182
   },
   "counts": {
-    "paragraphs": 185,
-    "headings": 23,
+    "paragraphs": 181,
+    "headings": 22,
     "figures": 7,
     "tables": 17,
     "equations": 2,
@@ -16,12 +16,10 @@
     "algorithms": 0,
     "footnotes": 6,
     "inline_math_images": 20,
-    "images": 50
+    "images": 48
   },
   "issue_counts": {
-    "caption-gap": 2,
-    "hyphen-leftover": 1,
-    "split-paragraph": 2
+    "caption-gap": 1
   },
   "options": {},
   "source": {

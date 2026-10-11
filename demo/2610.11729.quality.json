@@ -1,13 +1,13 @@
 {
   "metrics": {
-    "word_recall": 0.9599,
-    "word_precision": 0.9835,
-    "bigram_recall": 0.944,
-    "bigram_precision": 0.9672,
-    "order_score": 0.9874
+    "word_recall": 0.9721,
+    "word_precision": 0.996,
+    "bigram_recall": 0.9667,
+    "bigram_precision": 0.9905,
+    "order_score": 0.9937
   },
   "counts": {
-    "paragraphs": 245,
+    "paragraphs": 243,
     "headings": 24,
     "figures": 17,
     "tables": 4,
@@ -20,12 +20,12 @@
   },
   "issue_counts": {
     "hyphen-leftover": 1,
-    "split-paragraph": 18,
+    "split-paragraph": 16,
     "stray-fragment": 1
   },
   "options": {},
   "source": {
     "pages": 36,
-    "title": "arXiv"
+    "title": "Three-dimensional imaging of isolated membrane-protein complexes in vacuo with an X-ray laser"
   }
 }

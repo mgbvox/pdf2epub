@@ -1,27 +1,27 @@
 {
   "metrics": {
-    "word_recall": 0.898,
-    "word_precision": 0.9666,
-    "bigram_recall": 0.8665,
-    "bigram_precision": 0.9327,
-    "order_score": 0.95
+    "word_recall": 0.9061,
+    "word_precision": 0.9652,
+    "bigram_recall": 0.8766,
+    "bigram_precision": 0.9338,
+    "order_score": 0.956
   },
   "counts": {
-    "paragraphs": 224,
-    "headings": 31,
+    "paragraphs": 214,
+    "headings": 32,
     "figures": 5,
-    "tables": 9,
+    "tables": 8,
     "equations": 0,
     "text_boxes": 0,
     "algorithms": 0,
     "footnotes": 13,
     "inline_math_images": 16,
-    "images": 31
+    "images": 30
   },
   "issue_counts": {
     "caption-gap": 1,
-    "split-paragraph": 12,
-    "stray-fragment": 5
+    "split-paragraph": 5,
+    "stray-fragment": 3
   },
   "options": {},
   "source": {

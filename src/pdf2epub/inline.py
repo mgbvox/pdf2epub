@@ -14,7 +14,7 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 from . import geometry as G
-from .extract import Glyph, Graphic, Link, needs_space
+from .extract import Glyph, Graphic, Link, needs_space, sort_glyphs
 from .geometry import Box
 from .model import Line, Paragraph
 
@@ -454,7 +454,9 @@ def math_alt(run: list[Glyph], line: Line) -> str:
         sub.clear()
         sup.clear()
 
-    for g in sorted(run, key=lambda g: (g.x0, -g.level)):
+    ordered = list(run)
+    sort_glyphs(ordered)
+    for g in ordered:
         if g.level == 0:
             flush()
             out.append(ch(g))

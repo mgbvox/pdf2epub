@@ -1,9 +1,9 @@
 {
   "metrics": {
-    "word_recall": 0.8695,
-    "word_precision": 0.9941,
-    "bigram_recall": 0.8631,
-    "bigram_precision": 0.9867,
+    "word_recall": 0.8701,
+    "word_precision": 0.9948,
+    "bigram_recall": 0.8641,
+    "bigram_precision": 0.9879,
     "order_score": 1.0
   },
   "counts": {
@@ -20,7 +20,7 @@
   },
   "issue_counts": {
     "hyphen-leftover": 1,
-    "split-paragraph": 2,
+    "split-paragraph": 1,
     "stray-fragment": 9
   },
   "options": {},

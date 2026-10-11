@@ -113,5 +113,30 @@ def inspect(
     typer.echo(f"Wrote {len(paths)} annotated page(s) to {out_dir}")
 
 
+@app.command()
+def check(
+    pdf: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="Source PDF file.")],
+    epub: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="EPUB converted from it.")],
+    as_json: Annotated[bool, typer.Option("--json", help="Print the full report as JSON.")] = False,
+) -> None:
+    """Score a conversion: fidelity metrics and defect lint with the PDF page of each issue."""
+    import json
+
+    from . import quality
+
+    rep = quality.evaluate(pdf, epub)
+    if as_json:
+        data = rep.to_json()
+        data["issues"] = quality.issues_as_dicts(rep)
+        typer.echo(json.dumps(data, indent=2))
+        return
+    typer.echo("  ".join(f"{k}={v:.4f}" for k, v in rep.metrics.items()))
+    typer.echo("  ".join(f"{k}={v}" for k, v in rep.counts.items()))
+    typer.echo(f"{len(rep.issues)} issue(s)" + (": " + ", ".join(f"{k} {v}" for k, v in sorted(rep.issue_counts.items())) if rep.issues else ""))
+    for i in rep.issues:
+        where = f"p{i.page}" if i.page is not None else "-"
+        typer.echo(f"  [{i.kind}] {where} {i.chapter}#{i.block}: {i.snippet}")
+
+
 if __name__ == "__main__":  # pragma: no cover
     app()

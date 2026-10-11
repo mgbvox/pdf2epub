@@ -1,30 +1,30 @@
 {
   "metrics": {
-    "word_recall": 0.8254,
-    "word_precision": 0.9751,
-    "bigram_recall": 0.7955,
-    "bigram_precision": 0.9399,
+    "word_recall": 0.8255,
+    "word_precision": 0.9753,
+    "bigram_recall": 0.7964,
+    "bigram_precision": 0.9408,
     "order_score": 0.9403
   },
   "counts": {
-    "paragraphs": 283,
-    "headings": 32,
+    "paragraphs": 270,
+    "headings": 33,
     "figures": 26,
     "tables": 16,
-    "equations": 4,
+    "equations": 6,
     "text_boxes": 0,
     "algorithms": 1,
     "footnotes": 14,
-    "inline_math_images": 51,
-    "images": 99
+    "inline_math_images": 48,
+    "images": 98
   },
   "issue_counts": {
     "blank-image": 2,
     "caption-gap": 2,
     "long-word": 1,
-    "split-paragraph": 29,
-    "stray-fragment": 6,
-    "tall-inline-math": 7,
+    "split-paragraph": 25,
+    "stray-fragment": 4,
+    "tall-inline-math": 6,
     "wide-inline-math": 1
   },
   "options": {},

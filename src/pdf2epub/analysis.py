@@ -60,6 +60,14 @@ def compute_stats(pages: list[PageData]) -> DocStats:
         for row in pd.rows:
             for g in row.glyphs:
                 g.math = g.font in stats.math_fonts
+            # a TeX text font promoted to math (\mathbf{x}) is also used for text such as
+            # bold headings: runs of it that spell words stay text
+            if any(g.math and infos[g.font].math_only for g in row.glyphs):
+                continue  # \text{MultiHead} inside a formula stays math
+            for run, _before, _after in _font_runs(row):
+                if run[0].math and not infos[run[0].font].math_only and _WORDY.search("".join(g.c for g in run)):
+                    for g in run:
+                        g.math = False
 
     stats.line_step = _line_step(pages, stats.body_size)
     stats.vocab = _vocabulary(pages)
@@ -87,6 +95,9 @@ def _font_infos(pages: list[PageData]) -> dict:
 def _is_math_only(pages: list[PageData], font: str) -> bool:
     info = _font_infos(pages).get(font)
     return bool(info and info.math_only)
+
+
+_WORDY = re.compile(r"[A-Za-z]?[a-z]{2,}")
 
 
 def _math_fonts(pages: list[PageData], infos: dict, body_families: set[str]) -> set[str]:

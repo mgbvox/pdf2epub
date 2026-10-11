@@ -19,7 +19,7 @@ import numpy as np
 
 from . import geometry as G
 from .analysis import DocStats, math_glyph_ratio
-from .extract import _EXT_FONT, Glyph, Graphic, PageData, Row, split_row
+from .extract import _EXT_FONT, Glyph, Graphic, PageData, Row, sort_glyphs, split_row
 from .geometry import Box
 
 CAPTION_RE = re.compile(
@@ -46,6 +46,7 @@ class Region:
     label: str = ""  # "Figure 3", "Table 2", "(4)"
     eqnum_segs: list[Row] = field(default_factory=list)
     separators: list[float] = field(default_factory=list)  # y of rules inside text boxes
+    style: str = ""  # "ruled": content framed by two horizontal rules
     id: str = ""
 
     def finalize(self) -> None:
@@ -58,6 +59,31 @@ class Region:
     def outer_box(self) -> Box:
         boxes = [self.box] + [r.box for r in self.caption]
         return G.union(boxes)
+
+
+@dataclass(eq=False)
+class Unit:
+    """The part of a row that falls in one column (equations are detected per unit)."""
+
+    uid: int
+    row_id: int
+    col: int  # column index, -1 when spanning the gutter
+    segs: list[Row]
+    baseline: float
+    size: float
+
+    @property
+    def glyphs(self) -> list[Glyph]:
+        return [g for sg in self.segs for g in sg.glyphs]
+
+    @property
+    def box(self) -> Box:
+        return G.union(sg.box for sg in self.segs)
+
+    @property
+    def core(self) -> Box:
+        b = self.box
+        return (b[0], self.baseline - 0.72 * self.size, b[2], self.baseline + 0.24 * self.size)
 
 
 @dataclass(eq=False)
@@ -322,7 +348,7 @@ class PageAnalyzer:
                 for g in small.glyphs:
                     g.level = 1 if g.oy < best.baseline else -1
                 best.glyphs.extend(small.glyphs)
-                best.glyphs.sort(key=lambda g: (g.x0, -g.level))
+                sort_glyphs(best.glyphs)
                 best.box = G.union([best.box, small.box])
                 self.rows.remove(small)
                 changed = True
@@ -364,6 +390,7 @@ class PageAnalyzer:
     def run(self) -> PageLayout:
         self.detect_footnotes()
         captions = self.detect_captions()
+        self.captions = captions
         clusters = self.make_clusters()
         tables = self.detect_rule_tables(clusters)
         for cap in captions:
@@ -646,6 +673,14 @@ class PageAnalyzer:
                 self.regions.append(reg)
                 return
         directions = ["below", "above"] if cap["kind"] == "table" else ["above", "below"]
+        # 1) graphics or ruled tables, in either direction, before any text-only fallback;
+        # for tables the usual side (caption above) wins unless the other side's content is
+        # clearly closer: a caption set below its table sits much nearer to it than to the
+        # next table down
+        if cap["kind"] == "table":  # figure captions go below the figure almost universally
+            near = {d: self._nearest_content(cap, clusters, tables, d) for d in directions}
+            if near[directions[0]] is not None and near[directions[1]] is not None and near[directions[1]] < 0.5 * near[directions[0]] - 2:
+                directions.reverse()
         for d in directions:
             reg = self._attach_table(cap, tables, d) if cap["kind"] == "table" else None
             if reg is None:
@@ -653,6 +688,20 @@ class PageAnalyzer:
             if reg is not None:
                 reg.caption_above = d == "below"
                 break
+        # 2) content framed by two rules (prompts, templates, rule-less tables)
+        if reg is None:
+            for d in directions:
+                reg = self._ruled_block(cap, clusters, d)
+                if reg is not None:
+                    reg.caption_above = d == "below"
+                    break
+        # 3) rows of non-paragraph text next to the caption
+        if reg is None:
+            for d in directions:
+                reg = self._textual_region(cap, d)
+                if reg is not None:
+                    reg.caption_above = d == "below"
+                    break
         if reg is None:
             # Caption without detectable content: keep it as an ordinary paragraph.
             for s in cap["segs"]:
@@ -698,7 +747,7 @@ class PageAnalyzer:
             last = row.core[3]
         if not picked:
             return None
-        segs = [s for rid in picked for s in self.segs_of[rid] if self.free(s)]
+        segs = [s for rid in picked for s in self.segs_of[rid] if self.free(s) and s.x0 >= span[0] - 2 and s.x1 <= span[1] + 2]
         reg = Region("algorithm", self.pd.index, G.union(s.box for s in segs), segs=segs)
         for s in segs:
             self.take(s, reg)
@@ -720,6 +769,28 @@ class PageAnalyzer:
         if best is not None:
             self._grow_text(best, small_only=True)
         return best
+
+    def _nearest_content(self, cap: dict, clusters: list[Cluster], tables: list[Region], direction: str) -> float | None:
+        """Distance to the closest float content _attach_table/_region_near would take (no side effects)."""
+        cbox = cap["box"]
+        c = self.col(cbox)
+        up = direction == "above"
+        best = None
+        for t in tables:
+            if t.caption or G.h_overlap(t.box, cbox) <= 0:
+                continue
+            d = cbox[1] - t.box[3] if up else t.box[1] - cbox[3]
+            if -2 <= d <= 5 * self.body and (best is None or d < best):
+                best = d
+        for cl in clusters:
+            if cl.used or cl.kind == "rules":
+                continue
+            if G.h_overlap(cl.box, G.union([cbox, (c[0], cbox[1], c[1], cbox[3])])) <= 0:
+                continue
+            d = cbox[1] - cl.box[3] if up else cl.box[1] - cbox[3]
+            if -0.5 * self.body <= d <= 12 * self.body and not self._paragraph_between(cl.box, cbox) and (best is None or d < best):
+                best = d
+        return None if best is None else max(best, 0.0)
 
     def _region_near(self, cap: dict, clusters: list[Cluster], tables: list[Region], direction: str) -> Region | None:
         cbox = cap["box"]
@@ -745,7 +816,7 @@ class PageAnalyzer:
             if -0.5 * self.body <= d <= 5 * self.body and G.h_overlap(t.box, cbox) > 0:
                 cands.append((d, t))
         if not cands:
-            return self._textual_region(cap, direction)
+            return None
         cands.sort(key=lambda x: x[0])
         d0, first = cands[0]
         if isinstance(first, Region):
@@ -754,6 +825,19 @@ class PageAnalyzer:
         reg = Region("figure", self.pd.index, first.box)
         members = [first]
         first.used = True
+        # a table caption set in one column of a multi-column page does not take content from
+        # the other column that has a caption of its own next to it (two tables side by side)
+        in_column = cap["kind"] == "table" and len(self.columns) > 1 and c[1] - c[0] < 0.75 * self.pd.width
+
+        def same_column(b: Box) -> bool:
+            if not in_column or G.h_overlap(b, (c[0], 0, c[1], 1)) > 0.5 * G.width(b):
+                return True
+            return not any(
+                other is not cap and G.h_overlap(other["box"], b) > 0.5 * min(G.width(b), G.width(other["box"]))
+                and min(abs(other["box"][1] - b[3]), abs(b[1] - other["box"][3])) < 3 * self.body
+                for other in getattr(self, "captions", [])
+            )
+
         # add side-by-side panels and stacked parts above the caption
         changed = True
         while changed:
@@ -764,7 +848,8 @@ class PageAnalyzer:
                 if cl.used:
                     continue
                 vb = G.v_overlap(cl.box, reg.box)
-                side = vb > 0.3 * min(G.height(cl.box), G.height(reg.box)) and G.h_gap(cl.box, reg.box) < 6 * self.body
+                side = (vb > 0.3 * min(G.height(cl.box), G.height(reg.box)) and G.h_gap(cl.box, reg.box) < 6 * self.body
+                        and same_column(cl.box))
                 stacked = (
                     G.h_overlap(cl.box, G.union([reg.box, cbox])) > 0
                     and (
@@ -834,6 +919,50 @@ class PageAnalyzer:
                     return True
         return False
 
+    def _ruled_block(self, cap: dict, clusters: list[Cluster], direction: str) -> Region | None:
+        """Rows enclosed by two wide horizontal rules next to a caption."""
+        cbox = cap["box"]
+        c = self.col(cbox)
+        cw = c[1] - c[0]
+        rules = sorted(
+            (g for cl in clusters if cl.kind == "rules" and not cl.used for g in cl.graphics
+             if g.hrule and G.width(g.box) >= 0.7 * cw and G.h_overlap(g.box, (c[0], 0, c[1], 1)) > 0.5 * G.width(g.box)),
+            key=lambda g: g.box[1],
+        )
+        if len(rules) < 2:
+            return None
+        if direction == "below":
+            first = next((r for r in rules if 0 <= r.box[1] - cbox[3] < 3 * self.body), None)
+            if first is None:
+                return None
+            later = [r for r in rules if r.box[1] > first.box[3] + self.body]
+            pair = (first, later[0]) if later else None
+        else:
+            last = next((r for r in reversed(rules) if 0 <= cbox[1] - r.box[3] < 3 * self.body), None)
+            if last is None:
+                return None
+            earlier = [r for r in rules if r.box[3] < last.box[1] - self.body]
+            pair = (earlier[-1], last) if earlier else None
+        if pair is None:
+            return None
+        top, bottom = pair[0].box[3], pair[1].box[1]
+        band = (min(pair[0].box[0], pair[1].box[0]) - 2, top, max(pair[0].box[2], pair[1].box[2]) + 2, bottom)
+        inside = [sg for sg in self.segs if G.fraction_inside(sg.core, band) > 0.6]
+        if not inside or any(not self.free(sg) for sg in inside):
+            return None
+        rows = {sg.row_id for sg in inside}
+        multi = sum(1 for rid in rows if len(self.segs_of[rid]) >= 2)
+        kind = "table" if cap["kind"] == "table" or multi >= 0.5 * len(rows) else "textbox"
+        reg = Region(kind, self.pd.index, G.union([sg.box for sg in inside] + [pair[0].box, pair[1].box]), segs=inside)
+        reg.graphics = [pair[0], pair[1]]
+        reg.style = "ruled"
+        for sg in inside:
+            self.take(sg, reg)
+        for cl in clusters:
+            if any(g in reg.graphics for g in cl.graphics):
+                cl.used = True
+        return reg
+
     def _textual_region(self, cap: dict, direction: str) -> Region | None:
         """A captioned float without graphics (e.g. a table drawn without rules)."""
         cbox = cap["box"]
@@ -860,6 +989,11 @@ class PageAnalyzer:
                 break
             if row.size > 1.15 * self.body:
                 break
+            letters = [g for g in row.glyphs if g.c.isalpha()]
+            if letters and all(g.info and g.info.bold for g in letters):
+                break  # a heading, never figure content
+            if not picked and up and self._paragraph_tail(rid):
+                return None  # the last line of the paragraph above, not a float
             picked.append(rid)
             edge = row.core[1] if up else row.core[3]
         if len(picked) < 2 and cap["kind"] == "table":
@@ -874,6 +1008,17 @@ class PageAnalyzer:
         for s in segs:
             self.take(s, reg)
         return reg
+
+    def _paragraph_tail(self, rid: int) -> bool:
+        """Row is the short last line of a paragraph whose previous line is ordinary text."""
+        row = self.rows[rid]
+        for j, other in enumerate(self.rows):
+            if j == rid or G.h_overlap(other.box, row.box) <= 0:
+                continue
+            gap = row.core[1] - other.core[3]
+            if 0 <= gap < 0.6 * self.body and self.paragraph_like(j):
+                return True
+        return False
 
     def _grow_text(self, reg: Region, small_only: bool) -> None:
         """Pull in labels/legends/tick marks that belong to a graphic."""
@@ -944,62 +1089,104 @@ class PageAnalyzer:
                     )
 
     # -- equations -------------------------------------------------------
+    def _units(self) -> list["Unit"]:
+        """Row pieces per column: equations live in one column, rows may span the gutter."""
+        units: list[Unit] = []
+        cols = self.columns
+        for rid, row in enumerate(self.rows):
+            groups: dict[int, list[Row]] = {}
+            for sg in self.segs_of[rid]:
+                groups.setdefault(self._col_index(sg.box), []).append(sg)
+            for ci, gs in groups.items():
+                gs.sort(key=lambda x: x.x0)
+                units.append(Unit(len(units), rid, ci, gs, row.baseline, row.size))
+        _ = cols
+        return units
+
+    def _col_index(self, box: Box) -> int:
+        if len(self.columns) == 1:
+            return 0
+        best, best_ov = 0, -1e9
+        for i, (a, b) in enumerate(self.columns):
+            ov = min(box[2], b) - max(box[0], a)
+            if ov > best_ov:
+                best, best_ov = i, ov
+        a, b = self.columns[best]
+        if G.width(box) > 1.3 * (b - a):
+            return -1  # spans the gutter
+        return best
+
+    def _col_bounds(self, ci: int) -> tuple[float, float]:
+        if ci < 0 or ci >= len(self.columns):
+            return (min(c[0] for c in self.columns), max(c[1] for c in self.columns))
+        return self.columns[ci]
+
     def detect_equations(self) -> None:
         body = self.body
-        free_rows = []
-        for rid, row in enumerate(self.rows):
-            segs = [s for s in self.segs_of[rid] if self.free(s)]
-            if segs and len(segs) == len(self.segs_of[rid]):
-                free_rows.append(rid)
+        units = [u for u in self._units() if all(self.free(sg) for sg in u.segs)]
         cand: dict[int, list[Row]] = {}
         eqnums: dict[int, list[Row]] = {}
-        for rid in free_rows:
-            row = self.rows[rid]
-            segs = self.segs_of[rid]
-            nums = [s for s in segs[1:] if EQNUM_RE.match(s.text.strip())] if len(segs) > 1 else []
+        for u in units:
+            segs = u.segs
+            c = self._col_bounds(u.col)
+            nums = [sg for sg in segs[1:] if EQNUM_RE.match(sg.text.strip())] if len(segs) > 1 else []
             if len(segs) == 1 and EQNUM_RE.match(segs[0].text.strip()):
-                c = self.col(row.box)
-                if row.x1 > c[1] - 3 * body:
-                    eqnums[rid] = segs
+                if u.box[2] > c[1] - 3 * body:
+                    eqnums[u.uid] = segs
                 continue
-            content = [s for s in segs if s not in nums]
-            glyphs = [g for s in content for g in s.glyphs]
+            content = [sg for sg in segs if sg not in nums]
+            glyphs = [g for sg in content for g in sg.glyphs]
             if not glyphs or glyphs[0].c in BULLET_CHARS and glyphs[0].c not in "-–—":
                 continue
             base = [g for g in glyphs if g.level == 0 and g.c not in ".,;:"]
             ratio = max(math_glyph_ratio(glyphs), math_glyph_ratio(base))
-            big_op = any(g.font.upper().startswith(("CMEX", "LMEX")) for g in glyphs)
-            c = self.col(row.box)
-            cbox = G.union(s.box for s in content)
+            ext = [g for g in glyphs if g.font.upper().startswith(("CMEX", "LMEX"))]
+            big_op = bool(ext)
+            # an operator with limits set underneath (\sum_{x \in H} in display style)
+            display_op = any(
+                g.c in "\u2211\u220f\u22c3\u22c2\u2210" and any(
+                    0 <= r.box[1] - u.core[3] < 0.8 * body and r.size < 0.85 * u.size and G.h_overlap(r.box, g.box) > 0.3 * (g.x1 - g.x0)
+                    for r in self.rows
+                )
+                for g in ext
+            )
+            cbox = G.union(sg.box for sg in content)
             indent = cbox[0] - c[0]
             centred = abs((cbox[0] + cbox[2]) / 2 - (c[0] + c[1]) / 2) < 2 * body and G.width(cbox) < 0.92 * (c[1] - c[0])
-            display_pos = indent > 1.2 * body or centred or bool(nums)
+            display_pos = indent > 1.2 * body or centred or bool(nums) or display_op
             if (ratio >= 0.45 or (big_op and ratio >= 0.25)) and display_pos:
-                if not nums and not centred and self._continues_text_above(rid, cbox, c):
+                if not nums and not centred and self._continues_text_above(u, cbox, c):
                     continue
-                cand[rid] = nums
+                cand[u.uid] = nums
         if not cand:
             return
-        # group candidates (plus attached small rows) by vertical proximity
-        ids = sorted(cand, key=lambda r: self.rows[r].box[1])
+        by_id = {u.uid: u for u in units}
+
+        def same_col(a: Unit, b: Unit) -> bool:
+            return a.col == b.col or a.col < 0 or b.col < 0
+
+        # group candidates by vertical proximity within a column
+        ids = sorted(cand, key=lambda i: by_id[i].box[1])
         groups: list[list[int]] = []
-        for rid in ids:
-            row = self.rows[rid]
-            if groups:
-                last = groups[-1]
-                gbox = G.union(self.rows[r].box for r in last)
-                if row.box[1] - gbox[3] < 0.5 * body and G.h_overlap(row.box, gbox) > -2 * body:
-                    last.append(rid)
+        for uid in ids:
+            u = by_id[uid]
+            last = next((g for g in reversed(groups) if same_col(by_id[g[0]], u)), None)
+            if last is not None:
+                gbox = G.union(by_id[i].box for i in last)
+                if u.box[1] - gbox[3] < 0.5 * body and G.h_overlap(u.box, gbox) > -2 * body:
+                    last.append(uid)
                     continue
-            groups.append([rid])
-        # merge groups that overlap or touch
+            groups.append([uid])
+        # merge groups that overlap or touch (same column)
         merged = True
         while merged and len(groups) > 1:
             merged = False
             for a in range(len(groups)):
                 for b in range(a + 1, len(groups)):
-                    ba = G.union(self.rows[r].box for r in groups[a])
-                    bb = G.union(self.rows[r].box for r in groups[b])
+                    if not same_col(by_id[groups[a][0]], by_id[groups[b][0]]):
+                        continue
+                    ba = G.union(by_id[i].box for i in groups[a])
+                    bb = G.union(by_id[i].box for i in groups[b])
                     if G.v_gap(ba, bb) < 0.3 * body and G.h_overlap(ba, bb) > -1.5 * body:
                         groups[a] = groups[a] + groups[b]
                         groups.pop(b)
@@ -1007,37 +1194,43 @@ class PageAnalyzer:
                         break
                 if merged:
                     break
+        taken: set[int] = set()
         for grp in groups:
-            gbox = G.union(self.rows[r].box for r in grp)
+            gbox = G.union(by_id[i].box for i in grp)
             members = set(grp)
-            # attach small rows (limits, fractions, scripts) and eq-number rows
+            anchor = by_id[grp[0]]
+            has_num = any(cand.get(i) for i in grp)
             changed = True
             while changed:
                 changed = False
-                for rid in free_rows:
-                    if rid in members:
+                for u in units:
+                    if u.uid in members or u.uid in taken or not same_col(anchor, u):
                         continue
-                    row = self.rows[rid]
-                    if rid in eqnums:
-                        if G.v_overlap(row.box, gbox) > 0 or abs(row.baseline - (gbox[1] + gbox[3]) / 2) < 0.7 * G.height(gbox):
-                            members.add(rid)
+                    if u.uid in eqnums:
+                        below = 0 <= u.box[1] - gbox[3] < 1.2 * self.stats.line_step and not has_num
+                        if G.v_overlap(u.box, gbox) > 0 or abs(u.baseline - (gbox[1] + gbox[3]) / 2) < 0.7 * G.height(gbox) or below:
+                            members.add(u.uid)
+                            has_num = True
                             changed = True
                         continue
-                    near = G.v_gap(row.box, gbox) < 0.35 * body
-                    inside_x = row.x0 >= gbox[0] - 1.5 * body and row.x1 <= gbox[2] + 1.5 * body
-                    mathy = math_glyph_ratio(row.glyphs) >= 0.3 or row.size < 0.85 * body
-                    enclosed = G.fraction_inside(row.core, gbox) > 0.6 and math_glyph_ratio(row.glyphs) >= 0.2
-                    if (near and inside_x and mathy and len(row.glyphs) < 60) or enclosed:
-                        members.add(rid)
-                        gbox = G.union([gbox, row.box])
+                    if u.uid in cand:
+                        continue
+                    near = G.v_gap(u.box, gbox) < 0.35 * body
+                    inside_x = u.box[0] >= gbox[0] - 1.5 * body and u.box[2] <= gbox[2] + 1.5 * body
+                    mathy = math_glyph_ratio(u.glyphs) >= 0.3 or u.size < 0.85 * body
+                    enclosed = G.fraction_inside(u.core, gbox) > 0.6 and math_glyph_ratio(u.glyphs) >= 0.2
+                    if (near and inside_x and mathy and len(u.glyphs) < 60) or enclosed:
+                        members.add(u.uid)
+                        gbox = G.union([gbox, u.box])
                         changed = True
-            segs = [s for rid in members for s in self.segs_of[rid]]
-            nums = [s for rid in members for s in (cand.get(rid) or [])]
-            nums += [s for rid in members if rid in eqnums for s in eqnums[rid]]
-            content = [s for s in segs if s not in nums]
+            taken |= members
+            segs = [sg for i in members for sg in by_id[i].segs]
+            nums = [sg for i in members for sg in (cand.get(i) or [])]
+            nums += [sg for i in members if i in eqnums for sg in eqnums[i]]
+            content = [sg for sg in segs if sg not in nums]
             if not content:
                 continue
-            box = G.union(s.box for s in content)
+            box = G.union(sg.box for sg in content)
             reg = Region("equation", self.pd.index, box, segs=content, eqnum_segs=nums)
             for g in self.graphics:
                 if g.role and g.role != "math":
@@ -1049,28 +1242,32 @@ class PageAnalyzer:
                 if (g.hrule or g.kind == "path") and G.contains(G.expand(box, 2), g.box) and G.height(g.box) < 0.4 * G.height(box) + 2:
                     reg.graphics.append(g)
                     g.role = "equation"
-            for s in segs:
-                self.take(s, reg)
-            reg.label = " ".join(n.text.strip() for n in sorted(nums, key=lambda s: s.baseline))
+            for sg in segs:
+                self.take(sg, reg)
+            reg.label = " ".join(n.text.strip() for n in sorted(nums, key=lambda x: x.baseline))
             self.regions.append(reg)
 
-    def _continues_text_above(self, rid: int, cbox: Box, c: tuple[float, float]) -> bool:
-        """Row looks like the wrapped tail of the text line above (e.g. inside a list item)."""
-        row = self.rows[rid]
+    def _continues_text_above(self, u: "Unit", cbox: Box, c: tuple[float, float]) -> bool:
+        """Unit looks like the wrapped tail of the text line above (e.g. inside a list item)."""
         prev = None
-        for j, r in enumerate(self.rows):
-            if j == rid or r.baseline >= row.baseline - 0.5 * row.size:
+        for v in self._units_cache():
+            if v.col != u.col or v.baseline >= u.baseline - 0.5 * u.size:
                 continue
-            if G.h_overlap(r.box, cbox) <= 0 or row.core[1] - r.core[3] > 0.9 * self.stats.line_step:
+            if G.h_overlap(v.box, cbox) <= 0 or u.core[1] - v.core[3] > 0.9 * self.stats.line_step:
                 continue
-            if prev is None or r.baseline > prev.baseline:
-                prev = r
+            if prev is None or v.baseline > prev.baseline:
+                prev = v
         if prev is None or not self.stats.is_body_size(prev.size):
             return False
         if math_glyph_ratio(prev.glyphs) > 0.6:
             return False
-        full = prev.x1 >= c[1] - 1.5 * row.size
-        return full and cbox[0] <= prev.x0 + 2.5 * row.size
+        full = prev.box[2] >= c[1] - 1.5 * u.size
+        return full and cbox[0] <= prev.box[0] + 2.5 * u.size
+
+    def _units_cache(self) -> list["Unit"]:
+        if not hasattr(self, "_ucache"):
+            self._ucache = self._units()
+        return self._ucache
 
     # -- reading order ----------------------------------------------------
     def reading_order(self) -> list:
@@ -1079,10 +1276,30 @@ class PageAnalyzer:
         items: list = [s for s in self.segs if self.free(s)]
         items.extend(self.regions)
         boxes = {id(it): (it.outer_box if isinstance(it, Region) else it.box) for it in items}
-        return xy_cut(items, boxes, self.body)
+        gutters = [(a[1], b[0]) for a, b in zip(self.columns, self.columns[1:])]
+        return xy_cut(items, boxes, self.body, gutters)
 
 
-def xy_cut(items: list, boxes: dict, body: float) -> list:
+def _vertical_cut_ok(cut: float, left: list, right: list, gutters: list[tuple[float, float]], body: float) -> bool:
+    """A vertical cut may separate text from floats, follow a column gutter, or split a grid.
+
+    It must not slice through ordinary lines (a run-in heading followed by a quad
+    space, where the next line happens to be short): at least half of the rows on
+    either side must be split the same way, as in a grid of author blocks.
+    """
+    lf = [it for it in left if isinstance(it, Row)]
+    rf = [it for it in right if isinstance(it, Row)]
+    if not lf or not rf:
+        return True
+    if any(g0 - 2 <= cut <= g1 + 2 for g0, g1 in gutters):
+        return True
+    lrows = {it.row_id for it in lf}
+    rrows = {it.row_id for it in rf}
+    return len(lrows & rrows) >= 0.5 * len(lrows | rrows)
+
+
+def xy_cut(items: list, boxes: dict, body: float, gutters: list[tuple[float, float]] | None = None) -> list:
+    gutters = gutters or []
     if len(items) <= 1:
         return list(items)
 
@@ -1097,22 +1314,21 @@ def xy_cut(items: list, boxes: dict, body: float) -> list:
             cur_hi = max(cur_hi, b)
         return out
 
-    vg = [g for g in gaps(0) if g[0] >= 0.8 * body]
+    vg = sorted((g for g in gaps(0) if g[0] >= 0.8 * body), reverse=True)
     hg = gaps(1)
     best_h = max(hg, default=None)
-    best_v = max(vg, default=None)
-    if best_v is not None and (best_h is None or best_h[0] < 1.5 * body):
-        cut = best_v[1]
-        left = [it for it in items if (boxes[id(it)][0] + boxes[id(it)][2]) / 2 < cut]
-        right = [it for it in items if (boxes[id(it)][0] + boxes[id(it)][2]) / 2 >= cut]
-        if left and right:
-            return xy_cut(left, boxes, body) + xy_cut(right, boxes, body)
+    if vg and (best_h is None or best_h[0] < 1.5 * body):
+        for _, cut in vg:
+            left = [it for it in items if (boxes[id(it)][0] + boxes[id(it)][2]) / 2 < cut]
+            right = [it for it in items if (boxes[id(it)][0] + boxes[id(it)][2]) / 2 >= cut]
+            if left and right and _vertical_cut_ok(cut, left, right, gutters, body):
+                return xy_cut(left, boxes, body, gutters) + xy_cut(right, boxes, body, gutters)
     if best_h is not None:
         cut = best_h[1]
         top = [it for it in items if (boxes[id(it)][1] + boxes[id(it)][3]) / 2 < cut]
         bottom = [it for it in items if (boxes[id(it)][1] + boxes[id(it)][3]) / 2 >= cut]
         if top and bottom:
-            return xy_cut(top, boxes, body) + xy_cut(bottom, boxes, body)
+            return xy_cut(top, boxes, body, gutters) + xy_cut(bottom, boxes, body, gutters)
     return sorted(items, key=lambda it: (boxes[id(it)][1], boxes[id(it)][0]))
 
 

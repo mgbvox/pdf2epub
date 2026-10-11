@@ -275,6 +275,8 @@ class HtmlWriter:
             return f'<div class="eq" id="{v.id}"{_pg(v)}>{img}</div>'
         if v.kind in ("textbox", "algorithm"):
             wrap = "boxwrap algo" if v.kind == "algorithm" else "boxwrap"
+            if v.region is not None and v.region.style == "ruled":
+                wrap += " ruled"
             parts.append(f'<div class="{wrap}" id="{v.id}"{_pg(v)}>')
             if v.caption_above and cap:
                 parts.append(cap)
@@ -443,10 +445,10 @@ class HtmlWriter:
             return parts
 
         def valid_columns(parts: list[Box], whole: Box) -> bool:
-            if len(parts) < 2 or len(parts) > 4:
+            if len(parts) < 2 or len(parts) > 6:
                 return False
             for p in parts:
-                if G.width(p) < 0.2 * G.width(whole):
+                if G.width(p) < max(0.1 * G.width(whole), 5 * self.body):
                     return False
                 if not any(G.fraction_inside(g, G.expand(p, 0.5)) > 0.5 and G.area(g) > 4 for g in graphic_boxes):
                     return False

@@ -1,13 +1,13 @@
 {
   "metrics": {
-    "word_recall": 0.9466,
-    "word_precision": 0.9899,
-    "bigram_recall": 0.9379,
-    "bigram_precision": 0.9809,
-    "order_score": 0.9857
+    "word_recall": 0.9477,
+    "word_precision": 0.9911,
+    "bigram_recall": 0.9402,
+    "bigram_precision": 0.9833,
+    "order_score": 0.9881
   },
   "counts": {
-    "paragraphs": 342,
+    "paragraphs": 344,
     "headings": 67,
     "figures": 8,
     "tables": 17,
@@ -19,7 +19,6 @@
     "images": 99
   },
   "issue_counts": {
-    "caption-gap": 1,
     "split-paragraph": 1,
     "stray-fragment": 10,
     "wide-inline-math": 4

@@ -1,27 +1,26 @@
 {
   "metrics": {
-    "word_recall": 0.8962,
-    "word_precision": 0.9383,
-    "bigram_recall": 0.848,
-    "bigram_precision": 0.8878,
+    "word_recall": 0.9006,
+    "word_precision": 0.9557,
+    "bigram_recall": 0.8552,
+    "bigram_precision": 0.9075,
     "order_score": 0.981
   },
   "counts": {
-    "paragraphs": 141,
+    "paragraphs": 126,
     "headings": 18,
     "figures": 4,
     "tables": 0,
-    "equations": 30,
+    "equations": 27,
     "text_boxes": 0,
     "algorithms": 2,
     "footnotes": 1,
-    "inline_math_images": 152,
-    "images": 189
+    "inline_math_images": 142,
+    "images": 176
   },
   "issue_counts": {
-    "split-paragraph": 8,
-    "stray-fragment": 3,
-    "tall-inline-math": 18,
+    "stray-fragment": 2,
+    "tall-inline-math": 16,
     "wide-inline-math": 2
   },
   "options": {},
