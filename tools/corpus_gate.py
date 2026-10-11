@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import html
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -167,7 +168,8 @@ def main(argv: list[str] | None = None) -> int:
 
         aid = args.arxiv or arxiv_id(args.add.name)
         if aid:
-            clash = [e["name"] for e in entries() if _label(e["name"]) == aid]
+            base = re.sub(r"v\d+$", "", aid)  # another version of the same paper counts as the same entry
+            clash = [e["name"] for e in entries() if re.sub(r"v\d+$", "", _label(e["name"])) == base]
             if clash:
                 print(f"{aid} is already in the corpus as {clash[0]}")
                 return 1
@@ -195,6 +197,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     todo = entries(args.names or None)
+    if args.names:
+        unknown = [n for n in args.names if not any(_selected(e["name"], [n]) for e in todo)]
+        if unknown:
+            print("no corpus entry matches: " + ", ".join(unknown) + " (use an arXiv id or a full name from demo/)")
+            return 2
     tmp = Path(tempfile.mkdtemp(prefix="pdf2epub-gate-"))
     results = []
     try:

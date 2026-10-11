@@ -230,3 +230,6 @@ output/
 
 # corpus regression runs (tools/run_corpus.py)
 .corpus/
+
+# agent worktrees (Claude Code)
+.claude/worktrees/
