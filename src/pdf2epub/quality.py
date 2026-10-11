@@ -202,6 +202,8 @@ def lint(epub_path: str | Path) -> list[Issue]:
                 add("blank-image", b, img["src"])
         if b.tag == "p" or b.tag.startswith("h"):
             prev = b
+        elif b.tag == "div":
+            prev = None  # a sentence may run on after a display equation
     for kind, nums in captions.items():
         nums = sorted(set(nums))
         if nums:

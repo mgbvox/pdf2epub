@@ -19,7 +19,7 @@
     "images": 189
   },
   "issue_counts": {
-    "split-paragraph": 9,
+    "split-paragraph": 8,
     "stray-fragment": 3,
     "tall-inline-math": 18,
     "wide-inline-math": 2

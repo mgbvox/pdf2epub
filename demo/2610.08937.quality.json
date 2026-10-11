@@ -20,7 +20,7 @@
   },
   "issue_counts": {
     "caption-gap": 1,
-    "split-paragraph": 10,
+    "split-paragraph": 1,
     "stray-fragment": 10,
     "wide-inline-math": 4
   },

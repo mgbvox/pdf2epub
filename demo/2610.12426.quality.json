@@ -20,7 +20,7 @@
   },
   "issue_counts": {
     "hard-breaks": 4,
-    "split-paragraph": 42,
+    "split-paragraph": 14,
     "stray-fragment": 18,
     "tall-inline-math": 1,
     "wide-inline-math": 3
