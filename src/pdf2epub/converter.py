@@ -14,6 +14,7 @@ from . import analysis, extract, layout
 from .epub import write_epub
 from .htmlgen import HtmlWriter, Options
 from .model import Document, Paragraph, Visual
+from .naming import arxiv_id, paper_stem
 from .render import Renderer
 from .structure import StructureBuilder
 
@@ -82,6 +83,19 @@ def build_document(doc, page_data, stats, layouts) -> Document:
     return StructureBuilder(doc, _PageList(page_data), layouts, stats).build()
 
 
+def default_output(pdf_path: Path, title: str) -> Path:
+    """Where ``convert`` writes when no output path is given: next to the PDF.
+
+    If the PDF's file name contains an arXiv id, the EPUB is named
+    ``{title_in_snake_case}-{arxiv_id}.epub`` (see :mod:`pdf2epub.naming`);
+    otherwise it keeps the PDF's name with an ``.epub`` suffix.
+    """
+    aid = arxiv_id(pdf_path.stem)
+    if aid and title:
+        return pdf_path.with_name(paper_stem(title, aid) + ".epub")
+    return pdf_path.with_suffix(".epub")
+
+
 def convert(
     pdf_path: str | Path,
     epub_path: str | Path | None = None,
@@ -92,7 +106,6 @@ def convert(
     t0 = time.time()
     opts = options or ConvertOptions()
     pdf_path = Path(pdf_path)
-    out = Path(epub_path) if epub_path else pdf_path.with_suffix(".epub")
     say = progress or (lambda _msg: None)
 
     say("analysing layout")
@@ -106,6 +119,7 @@ def convert(
     if opts.authors:
         document.authors = opts.authors
     document.language = opts.language
+    out = Path(epub_path) if epub_path else default_output(pdf_path, document.title)
 
     say("rendering figures, tables and formulas")
     renderer = Renderer(doc, dpi=opts.dpi)

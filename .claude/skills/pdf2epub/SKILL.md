@@ -16,7 +16,9 @@ For the module map, the main heuristics and their known traps, read
 ## Ground rules
 
 1. **The corpus is the yardstick.** `demo/` holds every conversion ever delivered or used for development:
-   `<name>.pdf`, the accepted `<name>.epub`, and a `<name>.quality.json` baseline. **Commit converter
+   `<name>.pdf`, the accepted `<name>.epub`, and a `<name>.quality.json` baseline, where `<name>` is
+   `{title_in_snake_case}-{arxiv_id}` (e.g. `attention_is_all_you_need-1706.03762`; `pdf2epub.naming`
+   builds it, and a test enforces it). **Commit converter
    code only when `python tools/corpus_gate.py` passes on every entry and improves at least one.** A fix
    that helps one paper but makes another worse is not done. Either find a version that is neutral
    elsewhere, or ask the user about the trade-off before you `--force` it.
@@ -53,25 +55,29 @@ Optional tools:
 
 1. **Get the PDF.** For arXiv, use `curl -fsSL -o /tmp/in/<id>.pdf https://arxiv.org/pdf/<id>` and put
    downloads in their own directory. For a user upload, use the uploaded path.
-2. **Convert:** `.venv/bin/pdf2epub convert /tmp/in/<id>.pdf -o /tmp/out/<id>.epub`. Pass
-   `--title`/`-a` only if the detected metadata is wrong; the corpus records those options.
+2. **Convert:** `.venv/bin/pdf2epub convert /tmp/in/<id>.pdf`. Because the file name contains the arXiv
+   id, the EPUB is written next to it as `{title_in_snake_case}-{id}.epub`. Pass `--title`/`-a` only if
+   the detected metadata is wrong; the corpus records those options (and the title names the files).
 3. **Run the quality pass** (Workflow B) and fix what it finds. Converter fixes follow Workflow C.
 4. **Add it to the corpus:**
-   `.venv/bin/python tools/corpus_gate.py --add /tmp/in/<id>.pdf --name <id> [--title "..." -a "..."]`.
-   This copies the PDF into `demo/`, converts it with the current code, and writes the EPUB, the
-   baseline and the regenerated `demo/README.md` index.
-5. **Commit and push** `demo/<id>.*` and `demo/README.md` to the branch the user's link should point to
-   (normally `main`).
+   `.venv/bin/python tools/corpus_gate.py --add /tmp/in/<id>.pdf [--title "..." -a "..."]`.
+   This converts it with the current code and writes `demo/<name>.pdf`, `.epub` and `.quality.json`
+   with `<name>` = `{title_in_snake_case}-{id}`, plus the regenerated `demo/README.md` index. It takes
+   the arXiv id from the file name; pass `--arxiv <id>` for an upload whose name lacks it. It refuses
+   an arXiv id that is already in the corpus. Note the `<name>` it prints for the next steps.
+5. **Commit and push** `demo/<name>.*` and `demo/README.md` to the branch the user's link should point
+   to (normally `main`).
 6. **Verify the download link** before sending it. Raw files are served at
-   `https://github.com/mgbvox/pdf2epub/raw/<branch>/demo/<id>.epub`:
+   `https://github.com/mgbvox/pdf2epub/raw/<branch>/demo/<name>.epub`:
    ```bash
-   curl -fsSL -o /tmp/check.epub "https://github.com/mgbvox/pdf2epub/raw/main/demo/<id>.epub" \
-     && cmp /tmp/check.epub demo/<id>.epub && echo "link OK"
+   curl -fsSL -o /tmp/check.epub "https://github.com/mgbvox/pdf2epub/raw/main/demo/<name>.epub" \
+     && cmp /tmp/check.epub demo/<name>.epub && echo "link OK"
    ```
    A fresh push can take a few seconds to be served. Retry `curl` before concluding it failed.
 7. **Email the link** with the Gmail connector (`send_message`; load it with ToolSearch if it is
    deferred). Send it to the user's own address taken from the session context. Include:
-   - the direct `.../raw/main/demo/<id>.epub` link (one tap downloads it on Android);
+   - the direct `.../raw/main/demo/<name>.epub` link (one tap downloads it on Android; the file name
+     carries the title, so it is recognisable in the Kindle library and downloads folder);
    - the paper title and what was checked (e.g. "EPUBCheck clean, 0 lint issues");
    - the Kindle steps below.
 
@@ -95,7 +101,8 @@ finding maps back to a page of the source.
 
 1. **Automated score:** `.venv/bin/pdf2epub check paper.pdf paper.epub`. It prints the fidelity metrics,
    structure counts, and every lint issue with its PDF page. For a corpus entry,
-   `python tools/corpus_gate.py <name> --show-issues` does the same and compares with the baseline.
+   `python tools/corpus_gate.py <arxiv-id> --show-issues` does the same and compares with the baseline
+   (entries can be selected by arXiv id or full name).
    - `word_recall` / `word_precision` (text dropped / duplicated; alt text counts),
      `bigram_*` (local word order), `order_score` (block order; 1.0 is perfect).
      Recall around 0.85–0.97 is normal: words inside figure, table and equation images count as missing.

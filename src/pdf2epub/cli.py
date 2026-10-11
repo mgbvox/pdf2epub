@@ -54,7 +54,7 @@ def main(
 @app.command()
 def convert(
     pdf: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="Input PDF file.")],
-    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output .epub path (default: next to the PDF).")] = None,
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output .epub path (default: next to the PDF; named {title_in_snake_case}-{arxiv_id}.epub when the PDF's name contains an arXiv id).")] = None,
     dpi: Annotated[int, typer.Option(min=150, max=1200, help="Resolution for figures, tables and formulas.")] = 400,
     inline_math: Annotated[MathMode, typer.Option(help="auto: simple inline math as text, complex as images; image: all math as images.")] = MathMode.auto,
     split_panels: Annotated[bool, typer.Option(help="Stack side-by-side sub-figures vertically for narrow screens.")] = True,

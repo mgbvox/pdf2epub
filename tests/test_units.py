@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pymupdf
 
@@ -9,6 +11,8 @@ from pdf2epub import geometry as G
 from pdf2epub.cli import _parse_pages
 from pdf2epub.extract import CMEX_LETTERS, Glyph, build_rows, extract_fragments, sort_glyphs, split_row, text_size
 from pdf2epub.fonts import font_info, normalise_font_name
+from pdf2epub.converter import default_output
+from pdf2epub.naming import arxiv_id, paper_stem, snake_title
 from pdf2epub.render import split_wide, squeeze_gap
 from pdf2epub.structure import _junk_title
 
@@ -115,3 +119,16 @@ def test_junk_metadata_titles():
         assert _junk_title(t), t
     for t in ("Attention Is All You Need", "Refusal in Language Models Is Mediated by a Single Direction"):
         assert not _junk_title(t), t
+
+
+def test_paper_file_names():
+    assert snake_title("BERT: Pre-training of Deep Bidirectional Transformers") == "bert_pre_training_of_deep_bidirectional_transformers"
+    assert snake_title("Truecell reproduces R Seurat\u2019s single-cell outputs") == "truecell_reproduces_r_seurats_single_cell_outputs"
+    assert snake_title("Na\u00efve 4D CTA: Validation") == "naive_4d_cta_validation"
+    assert arxiv_id("685b84a1-2406.11717v3.pdf") == "2406.11717v3"
+    assert arxiv_id("https://arxiv.org/abs/1412.6980") == "1412.6980"
+    assert arxiv_id("report-2024.pdf") is None and arxiv_id("v1.2.3") is None
+    assert paper_stem("Attention Is All You Need", "1706.03762") == "attention_is_all_you_need-1706.03762"
+    assert paper_stem("Attention Is All You Need", None) == "attention_is_all_you_need"
+    assert default_output(Path("/x/1706.03762.pdf"), "Attention Is All You Need") == Path("/x/attention_is_all_you_need-1706.03762.epub")
+    assert default_output(Path("/x/paper.pdf"), "Attention Is All You Need") == Path("/x/paper.epub")

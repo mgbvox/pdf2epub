@@ -12,7 +12,7 @@ Convert PDFs, especially scientific papers, into reflowable EPUBs that are pleas
 | --- | --- | --- |
 | ![Inline math rendered on a phone](docs/phone-inline-math.png) | ![Display equation split for a narrow screen](docs/phone-equation.png) | ![Boxed prompt reflowed as text](docs/phone-text-box.png) |
 
-*Pixel-sized renders of [`demo/2406.11717v3.epub`](demo/2406.11717v3.epub), converted from [`demo/2406.11717v3.pdf`](demo/2406.11717v3.pdf). More papers, with their quality scores, are in [`demo/`](demo/README.md).*
+*Pixel-sized renders of the [EPUB](demo/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.epub) converted from [arXiv 2406.11717v3](demo/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.pdf). More papers, with their quality scores, are in [`demo/`](demo/README.md).*
 
 ## Install
 
@@ -28,6 +28,7 @@ Requires Python 3.10+. Dependencies: PyMuPDF, Pillow, NumPy, Typer.
 
 ```bash
 pdf2epub convert paper.pdf                     # writes paper.epub next to the PDF
+pdf2epub convert 1706.03762.pdf                # arXiv id in the name: writes attention_is_all_you_need-1706.03762.epub
 pdf2epub convert paper.pdf -o ~/Books/paper.epub --title "My Title" -a "First Author" -a "Second Author"
 pdf2epub convert paper.pdf --pages 1-12        # only some pages
 pdf2epub inspect paper.pdf --out debug/        # draw detected layout onto page images
@@ -41,7 +42,7 @@ pdf2epub check paper.pdf paper.epub            # score a conversion: fidelity me
 | `--split-panels / --no-split-panels` | on | Stack side-by-side sub-figures vertically for portrait screens. |
 | `--rotate-wide` | off | Rotate very wide tables and figures 90° (read by turning the phone). |
 | `--cover / --no-cover` | on | Use the first page as the cover image. |
-| `--output/-o` | next to the PDF | Output `.epub` path. |
+| `--output/-o` | next to the PDF | Output `.epub` path. When the PDF's file name contains an arXiv id, the default is `{title_in_snake_case}-{arxiv_id}.epub`. |
 | `--pages` | all | Page selection, 1-based, e.g. `1-5,8`. |
 | `--title`, `--author/-a` | PDF metadata, else detected from the first page | Override title and authors. |
 | `--language` | `en` | Language code written to the EPUB metadata. |
@@ -70,7 +71,7 @@ The Kindle app does not open `.epub` files tapped in a file manager. Send them w
 - Email the file as an attachment to your `@kindle.com` address.
 - Upload it at <https://www.amazon.com/sendtokindle>.
 
-To get a file onto the phone in the first place, a direct download link works well: every EPUB committed to this repository is downloadable at `https://github.com/mgbvox/pdf2epub/raw/main/demo/<name>.epub`.
+To get a file onto the phone in the first place, a direct download link works well: every EPUB committed to this repository is downloadable at `https://github.com/mgbvox/pdf2epub/raw/main/demo/<name>.epub`, where `<name>` is `{title_in_snake_case}-{arxiv_id}` (see [`demo/`](demo/README.md)).
 
 ## How it works
 
@@ -89,12 +90,12 @@ pip install -e ".[dev,qa]"                    # qa: playwright for phone preview
 pytest -m "not corpus"                        # fast synthetic-PDF test suite
 pytest -m corpus                              # the corpus quality gate (slow, see below)
 EPUBCHECK_JAR=/path/to/epubcheck.jar pytest   # also validate output with EPUBCheck (needs java)
-PDF2EPUB_SAMPLE_PDF=demo/2406.11717v3.pdf pytest   # also convert a real paper
+PDF2EPUB_SAMPLE_PDF=demo/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.pdf pytest   # also convert a real paper
 ```
 
 ### Quality gate and corpus
 
-[`demo/`](demo/README.md) keeps every conversion that was delivered or used for development: the input PDF, the accepted EPUB and a `.quality.json` baseline with its fidelity metrics and lint counts. It currently holds 12 CS and q-bio arXiv papers in NeurIPS, ICLR, ACL, CVPR and ICML layouts, including a Google-Docs PDF and math-heavy appendices.
+[`demo/`](demo/README.md) keeps every conversion that was delivered or used for development: the input PDF, the accepted EPUB and a `.quality.json` baseline with its fidelity metrics and lint counts, all named `{title_in_snake_case}-{arxiv_id}` (e.g. `attention_is_all_you_need-1706.03762.pdf`). It currently holds 12 CS and q-bio arXiv papers in NeurIPS, ICLR, ACL, CVPR and ICML layouts, including a Google-Docs PDF and math-heavy appendices.
 
 **Policy: a change to the converter is committed only if it does not make any of these conversions worse, and makes at least one better.** The gate re-converts every PDF with the current code and compares it with its baseline:
 
@@ -103,7 +104,7 @@ python tools/corpus_gate.py                   # check every entry (parallel); no
 python tools/corpus_gate.py --keep /tmp/new   # also keep the new EPUBs
 python tools/epub_diff.py demo/X.epub /tmp/new/X.epub --out /tmp/diff   # what exactly changed (text + images)
 python tools/corpus_gate.py --update          # accept: rewrite demo/ EPUBs and baselines (refuses on regressions)
-python tools/corpus_gate.py --add paper.pdf --name 2505.19056          # add a new conversion to the corpus
+python tools/corpus_gate.py --add 2505.19056.pdf  # add a new conversion (named {title_in_snake_case}-{arxiv_id})
 python tools/corpus_gate.py --rescore         # after changing quality.py itself: re-score without converting
 ```
 

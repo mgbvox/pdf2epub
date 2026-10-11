@@ -19,6 +19,7 @@ from pathlib import Path
 import pytest
 
 from pdf2epub import ConvertOptions, convert, quality
+from pdf2epub.naming import arxiv_id, paper_stem
 
 ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT / "demo"
@@ -39,6 +40,14 @@ def test_every_committed_pdf_has_a_conversion_and_baseline():
     for pdf in DEMO.glob("*.pdf"):
         assert pdf.with_suffix(".epub").exists(), f"{pdf.name} has no committed EPUB next to it"
         assert pdf.with_suffix(".quality.json").exists(), f"{pdf.name} has no quality baseline (add it with tools/corpus_gate.py --add)"
+
+
+def test_corpus_files_are_named_title_dash_arxiv_id():
+    """demo/ files are named {title_in_snake_case}-{arxiv_id}.{ext}, the title being the EPUB's."""
+    for base in DEMO.glob("*.quality.json"):
+        stem = base.name[: -len(".quality.json")]
+        title = json.loads(base.read_text()).get("source", {}).get("title", "")
+        assert stem == paper_stem(title, arxiv_id(stem)), f"{stem} should be named {paper_stem(title, arxiv_id(stem))}"
 
 
 @pytest.mark.corpus

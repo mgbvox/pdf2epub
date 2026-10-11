@@ -2,16 +2,18 @@
 
 Each ``demo/<name>.pdf`` sits next to its accepted ``<name>.epub`` and a
 ``<name>.quality.json`` baseline (fidelity metrics, lint counts, structure
-counts and the conversion options used). The gate re-converts every PDF with
+counts and the conversion options used). ``<name>`` is
+``{title_in_snake_case}-{arxiv_id}`` (see :mod:`pdf2epub.naming`), e.g.
+``attention_is_all_you_need-1706.03762``. The gate re-converts every PDF with
 the current code, evaluates it with :mod:`pdf2epub.quality` and fails on any
 regression against the baseline.
 
     python tools/corpus_gate.py                 # check the whole corpus (parallel)
-    python tools/corpus_gate.py 2505.19056      # check selected entries
+    python tools/corpus_gate.py 2505.19056      # check selected entries (arXiv id or full name)
     python tools/corpus_gate.py --show-issues   # list every lint issue of the new output
     python tools/corpus_gate.py --keep out/     # keep the new EPUBs for inspection
     python tools/corpus_gate.py --update        # accept: rewrite EPUBs + baselines (refuses on regressions)
-    python tools/corpus_gate.py --add paper.pdf --name 2505.19056 [--title ... -a ...]
+    python tools/corpus_gate.py --add 2505.19056.pdf [--arxiv 2505.19056] [--title ... -a ...]
     python tools/corpus_gate.py --rescore       # metric change only: re-score the committed EPUBs
 
 Policy: commit a code change only if this gate passes on every entry. When the
@@ -40,10 +42,24 @@ DEMO = ROOT / "demo"
 sys.path.insert(0, str(ROOT / "src"))
 
 
+def _label(stem: str) -> str:
+    """Short name for output: the arXiv id, or the stem."""
+    from pdf2epub.naming import arxiv_id
+
+    return arxiv_id(stem) or stem[:40]
+
+
+def _selected(stem: str, names: list[str]) -> bool:
+    from pdf2epub.naming import arxiv_id
+
+    aid = arxiv_id(stem) or ""
+    return any(n == stem or n == aid or aid.startswith(n + "v") for n in names)
+
+
 def entries(names: list[str] | None = None) -> list[dict]:
     out = []
     for pdf in sorted(DEMO.glob("*.pdf")):
-        if names and pdf.stem not in names:
+        if names and not _selected(pdf.stem, names):
             continue
         base = pdf.with_suffix(".quality.json")
         data = json.loads(base.read_text()) if base.exists() else {}
@@ -85,8 +101,10 @@ def write_index() -> None:
         m, c = b.get("metrics", {}), b.get("counts", {})
         issues = sum(b.get("issue_counts", {}).values())
         title = b.get("source", {}).get("title", "").replace("|", "\\|")
+        label = _label(e["name"])
+        paper = f"[{label}](https://arxiv.org/abs/{label})" if label != e["name"][:40] else label
         rows.append(
-            f"| [{e['name']}]({e['name']}.pdf) / [epub]({e['name']}.epub) | {title} | {b.get('source', {}).get('pages', '')} "
+            f"| {paper} | {title} | [pdf]({e['name']}.pdf) · [epub]({e['name']}.epub) | {b.get('source', {}).get('pages', '')} "
             f"| {c.get('figures', 0)}/{c.get('tables', 0)}/{c.get('equations', 0)} | {m.get('word_recall', 0):.3f} "
             f"| {m.get('order_score', 0):.3f} | {issues} |"
         )
@@ -95,13 +113,14 @@ def write_index() -> None:
         "Every conversion delivered or used for development is kept here: the input PDF, the accepted EPUB, and a\n"
         "`.quality.json` baseline. `tests/test_corpus.py` and `tools/corpus_gate.py` re-convert each PDF with the\n"
         "current code and fail if any quality metric gets worse. Code changes are committed only when the gate passes,\n"
-        "and improvements are accepted with `python tools/corpus_gate.py --update`, which rewrites these files.\n\n"
+        "and improvements are accepted with `python tools/corpus_gate.py --update`, which rewrites these files.\n"
+        "Files are named `{title_in_snake_case}-{arxiv_id}.{pdf,epub,quality.json}`.\n\n"
         "To read one on Kindle, download the `.epub` and use Send to Kindle (Android: Share → Kindle, or email it to\n"
         "your `@kindle.com` address). The Kindle app does not open `.epub` files tapped in a file manager.\n\n"
         "Columns: fig/tab/eq = figures, tables, display equations; recall = share of the PDF's words present in the\n"
         "EPUB (text and alt text); order = reading-order score; issues = lint findings (lower is better).\n\n"
-        "| Files | Title | Pages | fig/tab/eq | recall | order | issues |\n"
-        "| --- | --- | ---: | :---: | ---: | ---: | ---: |\n"
+        "| arXiv | Title | Files | Pages | fig/tab/eq | recall | order | issues |\n"
+        "| --- | --- | --- | ---: | :---: | ---: | ---: | ---: |\n"
         + "\n".join(rows) + "\n"
     )
     (DEMO / "README.md").write_text(text)
@@ -116,7 +135,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--keep", type=Path, help="copy the new EPUBs here for inspection")
     ap.add_argument("--show-issues", action="store_true", help="print every lint issue of the new output")
     ap.add_argument("--add", type=Path, help="add a PDF to the corpus (copied into demo/)")
-    ap.add_argument("--name", help="with --add: file stem to use in demo/ (default: the PDF's stem)")
+    ap.add_argument("--arxiv", help="with --add: arXiv id (default: found in the PDF's file name)")
+    ap.add_argument("--name", help="with --add: override the file stem (default: {title_in_snake_case}-{arxiv_id})")
     ap.add_argument("--title")
     ap.add_argument("-a", "--author", action="append")
     ap.add_argument("--index", action="store_true", help="only regenerate demo/README.md")
@@ -136,23 +156,42 @@ def main(argv: list[str] | None = None) -> int:
                 if key in e["baseline"]:
                     data[key] = e["baseline"][key]
             old = e["baseline"]
-            print(f"{e['name']:<14} issues {sum(old.get('issue_counts', {}).values())} -> {sum(data['issue_counts'].values())}  "
+            print(f"{_label(e['name']):<14} issues {sum(old.get('issue_counts', {}).values())} -> {sum(data['issue_counts'].values())}  "
                   + " ".join(f"{k}={old.get('metrics', {}).get(k, 0):.4f}->{v:.4f}" for k, v in data["metrics"].items()
                              if abs(v - old.get("metrics", {}).get(k, 0)) > 1e-4))
             pdf.with_suffix(".quality.json").write_text(json.dumps(data, indent=2) + "\n")
         write_index()
         return 0
     if args.add:
-        name = args.name or args.add.stem
-        dest = DEMO / f"{name}.pdf"
-        DEMO.mkdir(exist_ok=True)
-        if args.add.resolve() != dest.resolve():
-            shutil.copyfile(args.add, dest)
+        from pdf2epub.naming import arxiv_id, paper_stem
+
+        aid = args.arxiv or arxiv_id(args.add.name)
+        if aid:
+            clash = [e["name"] for e in entries() if _label(e["name"]) == aid]
+            if clash:
+                print(f"{aid} is already in the corpus as {clash[0]}")
+                return 1
+        elif not args.name:
+            print("warning: no arXiv id in the file name; pass --arxiv ID (naming the files by title only)")
         opts = {k: v for k, v in (("title", args.title), ("authors", args.author)) if v}
-        res = run_one({"name": name, "pdf": str(dest), "options": opts, "baseline": {}}, str(DEMO))
-        dest.with_suffix(".quality.json").write_text(json.dumps(res["current"], indent=2) + "\n")
+        tmp = Path(tempfile.mkdtemp(prefix="pdf2epub-add-"))
+        try:
+            res = run_one({"name": "new", "pdf": str(args.add), "options": opts, "baseline": {}}, str(tmp))
+            name = args.name or paper_stem(res["current"]["source"]["title"], aid)
+            dest = DEMO / f"{name}.pdf"
+            if dest.exists() and dest.resolve() != args.add.resolve():
+                print(f"{dest} already exists")
+                return 1
+            DEMO.mkdir(exist_ok=True)
+            if args.add.resolve() != dest.resolve():
+                shutil.copyfile(args.add, dest)
+            shutil.copyfile(res["epub"], dest.with_suffix(".epub"))
+            dest.with_suffix(".quality.json").write_text(json.dumps(res["current"], indent=2) + "\n")
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
         write_index()
-        print(f"added {name}: " + json.dumps(res["current"]["metrics"]) + f" issues={sum(res['current']['issue_counts'].values())}")
+        print(f"added demo/{name}.{{pdf,epub,quality.json}}: " + json.dumps(res["current"]["metrics"])
+              + f" issues={sum(res['current']['issue_counts'].values())}")
         return 0
 
     todo = entries(args.names or None)
@@ -170,14 +209,14 @@ def main(argv: list[str] | None = None) -> int:
         for e, res in results:
             if "error" in res:
                 n_reg += 1
-                print(f"{e['name']:<14} CRASHED    {res['error']}")
+                print(f"{_label(e['name']):<14} CRASHED    {res['error']}")
                 continue
             base, cur = e["baseline"], res["current"]
             regs = quality.compare(base, cur) if base.get("metrics") else []
             imps = quality.improvements(base, cur) if base.get("metrics") else ["(no baseline)"]
             n_reg += len(regs)
             status = "REGRESSED" if regs else ("improved" if imps else "same")
-            print(f"{e['name']:<14} {status:<10} " + " ".join(f"{k.split('_')[0][:4]}{k.split('_')[1][:3]}={v:.4f}" for k, v in cur["metrics"].items())
+            print(f"{_label(e['name']):<14} {status:<10} " + " ".join(f"{k.split('_')[0][:4]}{k.split('_')[1][:3]}={v:.4f}" for k, v in cur["metrics"].items())
                   + f" issues={sum(cur['issue_counts'].values())}")
             for r in regs:
                 print(f"    - {r}")
