@@ -52,6 +52,22 @@ pdf2epub check paper.pdf paper.epub            # score a conversion: fidelity me
 
 `pdf2epub check` compares the EPUB's text with the PDF (word and bigram recall/precision, reading-order score) and lists likely defects (split paragraphs, stray fragments, unjoined hyphens, oversized inline formulas, blank images, missing captions…) with the PDF page of each, so they can be traced with `inspect --pages N`.
 
+## Covers
+
+The cover shows the paper's key figure under its title and authors, instead of a thumbnail of page one.
+Which figure is "key" is a judgement call, so it is made in the loop. Convert, look at the candidates,
+then pick:
+
+```bash
+pdf2epub figures paper.epub --out figs/        # numbered list + contact sheet figs/figures.png
+pdf2epub cover paper.epub --figure 3 --preview cover.jpg   # or a label: --figure "Figure 2"
+pdf2epub convert paper.pdf --cover-figure 3     # or choose while converting (auto | N | label | page)
+```
+
+Without a choice, `auto` picks an uncaptioned lead figure if there is one, else an early overview-like
+figure with a cover-friendly shape. An LLM agent working with this repository looks at the contact sheet
+and chooses (see the agent skill).
+
 ## Web articles
 
 Research blog posts and other HTML articles convert directly, without a detour through PDF:

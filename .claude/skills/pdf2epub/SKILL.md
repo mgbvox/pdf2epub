@@ -64,10 +64,19 @@ Optional tools:
    id, the EPUB is written next to it as `{title_in_snake_case}-{id}.epub`. Pass `--title`/`-a` only if
    the detected metadata is wrong; the corpus records those options (and the title names the files).
 3. **Run the quality pass** (Workflow B) and fix what it finds. Converter fixes follow Workflow C.
+   **Choose the cover figure yourself:** run `.venv/bin/pdf2epub figures BOOK.epub --out /tmp/figs`, view
+   `/tmp/figs/figures.png` (and any `figure-NN` you are weighing), and pick the figure that conveys the
+   paper at a glance and stays recognisable small: an overview, method or architecture diagram, or a
+   teaser, ahead of a generic results curve. Avoid strips of tiny panels. Then run
+   `pdf2epub cover BOOK.epub --figure N --preview /tmp/cover.jpg` and look at the preview. The `auto`
+   default is only a fallback for when nobody chooses.
 4. **Add it to the corpus:**
    `.venv/bin/python tools/corpus_gate.py --add /tmp/in/<id>.pdf [--title "..." -a "..."]`.
    This converts it with the current code and writes `demo/PDF/<name>.pdf`, `.epub` and `.quality.json`
-   with `<name>` = `{title_in_snake_case}-{id}`, plus the regenerated `demo/README.md` index. It takes
+   with `<name>` = `{title_in_snake_case}-{id}`, plus the regenerated `demo/README.md` index. Pass
+   `--cover-figure N` with your choice from step 3, or record it later with
+   `tools/corpus_gate.py --set-cover <name> N`; the entry's options keep it, so the gate rebuilds the
+   same cover. It takes
    the arXiv id from the file name; pass `--arxiv <id>` for an upload whose name lacks it. It refuses
    an arXiv id that is already in the corpus. Note the `<name>` it prints for the next steps.
 5. **Commit and push** `demo/PDF/<name>.*` and `demo/README.md` to the branch the user's link should point
