@@ -27,6 +27,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8", "pytest-xdist>=3", "ruff>=0.5"]
 qa = ["playwright>=1.40"]
+web = ["playwright>=1.40"]
 
 [project.scripts]
 pdf2epub = "pdf2epub.cli:app"

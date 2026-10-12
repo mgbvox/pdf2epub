@@ -114,6 +114,31 @@ def inspect(
 
 
 @app.command()
+def web(
+    urls: Annotated[list[str], typer.Argument(help="Article URL(s); several pages (e.g. article + appendix) become one book.")],
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Output .epub path (default: {title_in_snake_case}[-{arxiv_id}].epub in the current directory).")] = None,
+    title: Annotated[Optional[str], typer.Option(help="Override the book title.")] = None,
+    author: Annotated[Optional[list[str]], typer.Option("--author", "-a", help="Override authors (repeatable).")] = None,
+    language: Annotated[Optional[str], typer.Option(help="Language code (default: the page's lang attribute, else en).")] = None,
+    width: Annotated[int, typer.Option(min=320, max=1600, help="Reading-column width in CSS px used to lay out the page and its figures.")] = 760,
+    scale: Annotated[float, typer.Option(min=1.0, max=4.0, help="Pixel density of formula and figure screenshots.")] = 3.0,
+    root: Annotated[Optional[str], typer.Option(help="CSS selector of the article element (default: main/article).")] = None,
+    cover: Annotated[bool, typer.Option(help="Use a screenshot of the top of the page as the cover.")] = True,
+    quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Only print errors.")] = False,
+) -> None:
+    """Convert a web article (HTML, e.g. a research blog post) into a Kindle-friendly EPUB."""
+    from .web import WebOptions, convert_web
+
+    progress = None if quiet else (lambda msg: typer.echo(f"  - {msg}", err=True))
+    rep = convert_web(urls, output, WebOptions(title=title, authors=author, language=language, width=width, scale=scale, root=root, cover=cover), progress)
+    if not quiet:
+        typer.echo(f"Wrote {rep.output} ({rep.output.stat().st_size / 1e6:.1f} MB) in {rep.seconds:.1f}s")
+        typer.echo(f"  title: {rep.title}")
+        typer.echo(f"  pages: {rep.pages}  chapters: {rep.chapters}  headings: {rep.headings}  paragraphs: {rep.paragraphs}")
+        typer.echo(f"  figures: {rep.figures}  tables: {rep.tables}  equations: {rep.equations}  inline math: {rep.inline_math_text} as text, {rep.inline_math_images} as images")
+
+
+@app.command()
 def check(
     pdf: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="Source PDF file.")],
     epub: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="EPUB converted from it.")],

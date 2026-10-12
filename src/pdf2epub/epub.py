@@ -94,6 +94,7 @@ def write_epub(
     cover: ImageAsset | None = None,
     identifier: str | None = None,
     description: str = "",
+    extra_css: str = "",
 ) -> None:
     ident = identifier or f"urn:uuid:{uuid.uuid4()}"
     modified = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -143,7 +144,7 @@ def write_epub(
         z.writestr("OEBPS/content.opf", opf, compress_type=zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/nav.xhtml", nav, compress_type=zipfile.ZIP_DEFLATED)
         z.writestr("OEBPS/toc.ncx", ncx, compress_type=zipfile.ZIP_DEFLATED)
-        z.writestr("OEBPS/style.css", CSS, compress_type=zipfile.ZIP_DEFLATED)
+        z.writestr("OEBPS/style.css", CSS + extra_css, compress_type=zipfile.ZIP_DEFLATED)
         for ch in chapters:
             z.writestr(f"OEBPS/{ch.file}", xhtml_page(ch.title, "\n".join(ch.body), language), compress_type=zipfile.ZIP_DEFLATED)
         for a in assets:
