@@ -95,7 +95,8 @@ def run_one(entry: dict, out_dir: str) -> dict:
     opts = entry["options"]
     out = Path(out_dir) / f"{entry['name']}.epub"
     rep = convert(entry["pdf"], out, ConvertOptions(
-        title=opts.get("title"), authors=opts.get("authors"), language=opts.get("language", "en")))
+        title=opts.get("title"), authors=opts.get("authors"), language=opts.get("language", "en"),
+        cover_figure=opts.get("cover_figure", "auto")))
     q = quality.evaluate(entry["pdf"], out)
     data = q.to_json()
     data["options"] = opts
@@ -141,7 +142,8 @@ def run_web(entry: dict, out_dir: str) -> dict:
     snaps = entry.get("snapshots") or _snapshots(entry["name"], entry["urls"])
     out = Path(out_dir) / f"{entry['name']}.epub"
     rep = convert_web([p.as_uri() for p in snaps], out, WebOptions(
-        title=opts.get("title"), authors=opts.get("authors"), canonical_urls=entry["urls"]))
+        title=opts.get("title"), authors=opts.get("authors"), canonical_urls=entry["urls"],
+        cover_figure=opts.get("cover_figure", "auto")))
     q = quality.evaluate_web(rep.reference_text, out)
     data = q.to_json()
     data.update(kind="web", urls=entry["urls"], options=opts, source={"pages": rep.pages, "title": rep.title},
@@ -224,11 +226,14 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--arxiv", help="with --add: arXiv id (default: found in the PDF's file name)")
     ap.add_argument("--name", help="with --add: override the file stem (default: {title_in_snake_case}-{arxiv_id})")
     ap.add_argument("--title")
+    ap.add_argument("--cover-figure", help="with --add/--add-web: cover figure number or label (default: auto)")
     ap.add_argument("-a", "--author", action="append")
     ap.add_argument("--index", action="store_true", help="only regenerate demo/README.md")
     ap.add_argument("--rescore", action="store_true", help="re-evaluate the committed EPUBs with the current metrics (no conversion)")
     ap.add_argument("--add-web", nargs="+", metavar="URL", help="add a web article (several URLs: one book) to demo/web/")
     ap.add_argument("--web-only", action="store_true", help="check only the web articles")
+    ap.add_argument("--set-cover", nargs=2, metavar=("NAME", "FIGURE"),
+                    help="record an entry's cover figure (number/label from 'pdf2epub figures') and rebuild its cover")
     ap.add_argument("--pdf-only", action="store_true", help="check only the PDF papers")
     args = ap.parse_args(argv)
 
@@ -262,11 +267,30 @@ def main(argv: list[str] | None = None) -> int:
             print(f"{e['name'][:40]:<40} rescored")
         write_index()
         return 0
+    if args.set_cover:
+        from pdf2epub.cover import set_cover
+
+        name, figure = args.set_cover
+        hits = [e for e in entries() + web_entries() if _selected(e["name"], [name]) or e["name"].startswith(name)]
+        if len(hits) != 1:
+            print(f"{name!r} matches {len(hits)} entries; give an arXiv id or a full name")
+            return 2
+        e = hits[0]
+        base = (WEB / f"{e['name']}.quality.json") if e.get("kind") == "web" else Path(e["pdf"]).with_suffix(".quality.json")
+        epub = base.with_name(f"{e['name']}.epub")
+        source = (f"arXiv {_label(e['name'])}" if e.get("kind") != "web" and _label(e["name"]) != e["name"][:40]
+                  else re.sub(r"^www\.", "", re.sub(r"^https?://([^/]+).*", r"\1", e.get("urls", [""])[0])))
+        fig = set_cover(epub, figure, source=source)
+        data = json.loads(base.read_text())
+        data.setdefault("options", {})["cover_figure"] = int(figure) if figure.isdigit() else figure
+        base.write_text(json.dumps(data, indent=2) + "\n")
+        print(f"{e['name']}: cover = figure #{fig.number} {fig.label}" if fig else f"{e['name']}: cover unchanged")
+        return 0
     if args.add_web:
         from pdf2epub.naming import paper_stem
         from pdf2epub.web import snapshot_pages
 
-        opts = {k: v for k, v in (("title", args.title), ("authors", args.author)) if v}
+        opts = {k: v for k, v in (("title", args.title), ("authors", args.author), ("cover_figure", args.cover_figure)) if v}
         tmp = Path(tempfile.mkdtemp(prefix="pdf2epub-addweb-"))
         try:
             snaps = [tmp / f"page-{i}.mhtml" for i in range(len(args.add_web))]
@@ -299,7 +323,7 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
         elif not args.name:
             print("warning: no arXiv id in the file name; pass --arxiv ID (naming the files by title only)")
-        opts = {k: v for k, v in (("title", args.title), ("authors", args.author)) if v}
+        opts = {k: v for k, v in (("title", args.title), ("authors", args.author), ("cover_figure", args.cover_figure)) if v}
         tmp = Path(tempfile.mkdtemp(prefix="pdf2epub-add-"))
         try:
             res = run_one({"name": "new", "pdf": str(args.add), "options": opts, "baseline": {}}, str(tmp))

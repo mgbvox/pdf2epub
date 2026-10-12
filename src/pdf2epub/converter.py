@@ -35,7 +35,10 @@ class ConvertOptions:
     rotate_wide: bool = False
     """Rotate very wide figures/tables by 90 degrees (read by turning the phone)."""
     cover: bool = True
-    """Render the first page as the cover image."""
+    """Give the book a cover image."""
+    cover_figure: str | int | None = "auto"
+    """Cover from a figure: a 1-based figure number, a label ("Figure 3"), "auto" (heuristic) or
+    "page" (render the first page). See :mod:`pdf2epub.cover` and ``pdf2epub figures``."""
     title: str | None = None
     authors: list[str] | None = None
     language: str = "en"
@@ -81,6 +84,11 @@ def analyze(pdf: str | Path | pymupdf.Document, pages: list[int] | None = None):
 
 def build_document(doc, page_data, stats, layouts) -> Document:
     return StructureBuilder(doc, _PageList(page_data), layouts, stats).build()
+
+
+def _source_line(pdf_path: Path) -> str:
+    aid = arxiv_id(pdf_path.stem)
+    return f"arXiv {aid}" if aid else ""
 
 
 def default_output(pdf_path: Path, title: str) -> Path:
@@ -133,7 +141,13 @@ def convert(
     digest = hashlib.sha1(pdf_path.read_bytes()).hexdigest()
     ident = f"urn:pdf2epub:{digest}"
     say("writing EPUB")
-    write_epub(out, document.title, document.authors, document.language, chapters, renderer.assets, writer.toc, cover, ident)
+    write_epub(out, document.title, document.authors, document.language, chapters, renderer.assets, writer.toc, cover, ident,
+               description=f"Converted from {pdf_path.name}")
+    if opts.cover and opts.cover_figure not in (None, "page"):
+        from .cover import set_cover
+
+        say("composing the cover from the key figure")
+        set_cover(out, opts.cover_figure, source=_source_line(pdf_path))
 
     rep = ConversionReport(output=out, pages=len(page_data), chapters=len(chapters), title=document.title, authors=document.authors)
     for b in document.blocks:

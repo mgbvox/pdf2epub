@@ -59,7 +59,8 @@ def convert(
     inline_math: Annotated[MathMode, typer.Option(help="auto: simple inline math as text, complex as images; image: all math as images.")] = MathMode.auto,
     split_panels: Annotated[bool, typer.Option(help="Stack side-by-side sub-figures vertically for narrow screens.")] = True,
     rotate_wide: Annotated[bool, typer.Option(help="Rotate very wide tables/figures 90 degrees.")] = False,
-    cover: Annotated[bool, typer.Option(help="Use the first page as the cover image.")] = True,
+    cover: Annotated[bool, typer.Option(help="Give the book a cover image.")] = True,
+    cover_figure: Annotated[str, typer.Option(help="Cover figure: a number or label from 'pdf2epub figures', 'auto', or 'page' (first page).")] = "auto",
     title: Annotated[Optional[str], typer.Option(help="Override the book title.")] = None,
     author: Annotated[Optional[list[str]], typer.Option("--author", "-a", help="Override authors (repeatable).")] = None,
     language: Annotated[str, typer.Option(help="Language code for the EPUB metadata.")] = "en",
@@ -73,7 +74,7 @@ def convert(
     opts = ConvertOptions(
         dpi=dpi, inline_math=inline_math.value, split_panels=split_panels, rotate_wide=rotate_wide,
         cover=cover, title=title, authors=list(author) if author else None, language=language,
-        pages=_parse_pages(pages),
+        pages=_parse_pages(pages), cover_figure=cover_figure,
     )
     progress = None if quiet else (lambda msg: typer.echo(f"  - {msg}", err=True))
     report = run(pdf, output, opts, progress=progress)
@@ -123,19 +124,72 @@ def web(
     width: Annotated[int, typer.Option(min=320, max=1600, help="Reading-column width in CSS px used to lay out the page and its figures.")] = 760,
     scale: Annotated[float, typer.Option(min=1.0, max=4.0, help="Pixel density of formula and figure screenshots.")] = 3.0,
     root: Annotated[Optional[str], typer.Option(help="CSS selector of the article element (default: main/article).")] = None,
-    cover: Annotated[bool, typer.Option(help="Use a screenshot of the top of the page as the cover.")] = True,
+    cover: Annotated[bool, typer.Option(help="Give the book a cover image.")] = True,
+    cover_figure: Annotated[str, typer.Option(help="Cover figure: a number or label from 'pdf2epub figures', 'auto', or 'page' (top of the page).")] = "auto",
     quiet: Annotated[bool, typer.Option("--quiet", "-q", help="Only print errors.")] = False,
 ) -> None:
     """Convert a web article (HTML, e.g. a research blog post) into a Kindle-friendly EPUB."""
     from .web import WebOptions, convert_web
 
     progress = None if quiet else (lambda msg: typer.echo(f"  - {msg}", err=True))
-    rep = convert_web(urls, output, WebOptions(title=title, authors=author, language=language, width=width, scale=scale, root=root, cover=cover), progress)
+    rep = convert_web(urls, output, WebOptions(title=title, authors=author, language=language, width=width, scale=scale, root=root, cover=cover, cover_figure=cover_figure), progress)
     if not quiet:
         typer.echo(f"Wrote {rep.output} ({rep.output.stat().st_size / 1e6:.1f} MB) in {rep.seconds:.1f}s")
         typer.echo(f"  title: {rep.title}")
         typer.echo(f"  pages: {rep.pages}  chapters: {rep.chapters}  headings: {rep.headings}  paragraphs: {rep.paragraphs}")
         typer.echo(f"  figures: {rep.figures}  tables: {rep.tables}  equations: {rep.equations}  inline math: {rep.inline_math_text} as text, {rep.inline_math_images} as images")
+
+
+@app.command()
+def figures(
+    epub: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="A converted EPUB.")],
+    out_dir: Annotated[Optional[Path], typer.Option("--out", "-o", help="Write figure images and a numbered contact sheet here.")] = None,
+) -> None:
+    """List the book's figures, to choose the cover figure (then: pdf2epub cover BOOK --figure N)."""
+    from .cover import auto_pick, candidates, contact_sheet
+
+    cands = candidates(epub)
+    if not cands:
+        typer.echo("no figures: the cover stays the first page")
+        return
+    auto = auto_pick(cands)
+    for c in cands:
+        star = "*" if c is auto else " "
+        where = f"p{c.page}" if c.page else "-"
+        typer.echo(f"{star}{c.number:>3}  {c.label or 'figure':<12} {where:<5} {c.width}x{c.height:<6} {c.caption[:110]}")
+    typer.echo(f"* = automatic choice (#{auto.number})")
+    if out_dir:
+        out_dir.mkdir(parents=True, exist_ok=True)
+        for c in cands:
+            ext = "jpg" if c.image[:3] == b"\xff\xd8\xff" else "png"
+            (out_dir / f"figure-{c.number:02d}.{ext}").write_bytes(c.image)
+        sheet = contact_sheet(cands, out_dir / "figures.png")
+        typer.echo(f"Wrote {len(cands)} figure image(s) and the contact sheet {sheet}")
+
+
+@app.command()
+def cover(
+    epub: Annotated[Path, typer.Argument(exists=True, dir_okay=False, readable=True, help="A converted EPUB.")],
+    figure: Annotated[str, typer.Option("--figure", "-f", help="Figure number or label (see pdf2epub figures), or 'auto'.")] = "auto",
+    output: Annotated[Optional[Path], typer.Option("--output", "-o", help="Write a new EPUB instead of updating in place.")] = None,
+    preview: Annotated[Optional[Path], typer.Option(help="Also save the cover image here (.jpg) to look at it.")] = None,
+) -> None:
+    """Make the book's cover from one of its figures: title, authors and source above the figure."""
+    import zipfile
+
+    from .cover import COVER_NAME, set_cover
+
+    fig = set_cover(epub, figure, output)
+    target = output or epub
+    if fig is None:
+        typer.echo("cover unchanged")
+        return
+    typer.echo(f"cover of {target} now shows figure #{fig.number} {fig.label}".rstrip())
+    if preview:
+        with zipfile.ZipFile(target) as z:
+            data = next(z.read(n) for n in z.namelist() if n.endswith(COVER_NAME))
+        preview.write_bytes(data)
+        typer.echo(f"preview: {preview}")
 
 
 @app.command()

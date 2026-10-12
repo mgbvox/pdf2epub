@@ -462,6 +462,7 @@ class WebOptions:
     cover: bool = True
     root: str | None = None  # CSS selector of the article element (default: main/article)
     canonical_urls: list[str] | None = None  # original URLs when converting snapshots (for cross-page links)
+    cover_figure: str | int | None = "auto"  # figure number, label, "auto" or "page" (top of the page)
 
 
 @dataclass
@@ -560,7 +561,7 @@ class _Book:
         im = im.convert("RGB") if im.mode in ("RGBA", "P", "LA") else im
         buf = io.BytesIO()
         # photographs compress far better as JPEG; plots, formulas and tables stay lossless
-        if photo and len(set(im.resize((min(im.width, 200), min(im.height, 200))).getdata())) > 6000:
+        if photo and im.resize((min(im.width, 200), min(im.height, 200))).getcolors(6000) is None:  # > 6000 colours
             im.save(buf, "JPEG", quality=88, optimize=True)
             ext, mt = "jpg", "image/jpeg"
         else:
@@ -665,9 +666,15 @@ def convert_web(
             if pi == 0 and opts.cover:
                 page.evaluate("window.scrollTo(0, 0)")
                 page.wait_for_timeout(100)
-                cover = book.add_image(page.screenshot(clip={"x": 0, "y": 0, "width": opts.width, "height": round(opts.width * 1.5)}), "cover")
+                cover = book.add_image(page.screenshot(clip={"x": 0, "y": 0, "width": opts.width, "height": round(opts.width * 1.5)}), "cover", photo=True)
                 book.assets.remove(cover)
-                cover.name = "images/cover." + cover.name.rsplit(".", 1)[1]
+                if cover.media_type != "image/jpeg":  # covers are always images/cover.jpg
+                    from PIL import Image
+
+                    buf = io.BytesIO()
+                    Image.open(io.BytesIO(cover.data)).convert("RGB").save(buf, "JPEG", quality=88)
+                    cover.data, cover.media_type = buf.getvalue(), "image/jpeg"
+                cover.name = "images/cover.jpg"
             data = page.evaluate(EXTRACT_JS, {"root": opts.root, "skip": SKIP_SELECTOR})
             canonical = (opts.canonical_urls or [])[pi] if opts.canonical_urls and pi < len(opts.canonical_urls) else data["url"]
             say(f"capturing {len(data['shots'])} formula and figure images")
@@ -710,6 +717,11 @@ def convert_web(
     say("writing EPUB")
     write_epub(out, title, authors, language, book.chapters, book.assets, book.toc, first.get("_cover"), ident,
                description=f"Converted from {(opts.canonical_urls or urls)[0]}", extra_css=WEB_CSS)
+    if opts.cover and opts.cover_figure not in (None, "page"):
+        from .cover import set_cover
+
+        say("composing the cover from the key figure")
+        set_cover(out, opts.cover_figure, source=urllib.parse.urlsplit((opts.canonical_urls or urls)[0]).netloc.removeprefix("www."))
     report.chapters = len(book.chapters)
     report.images = len(book.assets)
     report.seconds = time.time() - t0

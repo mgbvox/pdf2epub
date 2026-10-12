@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
+import pytest
 import pymupdf
 
 from pdf2epub import geometry as G
@@ -132,3 +133,22 @@ def test_paper_file_names():
     assert paper_stem("Attention Is All You Need", None) == "attention_is_all_you_need"
     assert default_output(Path("/x/1706.03762.pdf"), "Attention Is All You Need") == Path("/x/attention_is_all_you_need-1706.03762.epub")
     assert default_output(Path("/x/paper.pdf"), "Attention Is All You Need") == Path("/x/paper.epub")
+
+
+def test_cover_figure_choice():
+    from pdf2epub.cover import FigureCandidate, auto_pick, resolve
+
+    def cand(n, label, caption="", w=1200, h=800, page=None):
+        return FigureCandidate(n, label, caption, page, b"", w, h)
+
+    plots = [cand(1, "Figure 1", "Validation loss over training.", w=2200, h=700, page=3),
+             cand(2, "Figure 2", "Overview of our framework: the pipeline from data to model.", page=4),
+             cand(3, "Figure 3", "A strip.", w=4000, h=300, page=5)]
+    assert auto_pick(plots).number in (1, 2)  # early or overview-like, never the strip
+    assert auto_pick([cand(1, "", ""), *plots]).number == 1  # uncaptioned lead (teaser) figure first
+    assert resolve(plots, 3).number == 3 and resolve(plots, "Figure 2").number == 2 and resolve(plots, "fig. 2").number == 2
+    assert resolve(plots, "page") is None and resolve(plots, None) is None
+    with pytest.raises(ValueError):
+        resolve(plots, 9)
+    with pytest.raises(ValueError):
+        resolve(plots, "Figure 7")

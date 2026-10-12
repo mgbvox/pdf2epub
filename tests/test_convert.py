@@ -187,3 +187,35 @@ def test_real_paper(tmp_path):
     assert rep.paragraphs > 10
     doc = pymupdf.open(str(src))
     assert rep.pages == len(doc)
+
+
+def test_cover_from_key_figure_and_cli(tmp_path):
+    import zipfile
+
+    from pdf2epub.cover import candidates
+
+    b = PdfBuilder()
+    b.text(150, 80, "A Paper With One Figure", size=18, font="hebo")
+    y = b.paragraph(LEFT, 120, RIGHT - LEFT, "Intro. " + LOREM)
+    b.line((120, y + 10), (120, y + 150))
+    b.line((120, y + 150), (480, y + 150))
+    for i, h in enumerate([40, 90, 60]):
+        b.rect((140 + 80 * i, y + 150 - h, 190 + 80 * i, y + 150), fill=(0.8, 0.2, 0.2), width=0.4)
+    b.text(160, y + 175, "Figure 1: Overview of the method.", size=10)
+    pdf = b.save(tmp_path / "fig.pdf")
+    page_cover = tmp_path / "page.epub"
+    fig_cover = tmp_path / "fig.epub"
+    convert(pdf, page_cover, ConvertOptions(cover_figure="page"))
+    convert(pdf, fig_cover, ConvertOptions(cover_figure="auto"))
+    cands = candidates(fig_cover)
+    assert len(cands) == 1 and cands[0].label == "Figure 1"
+    with zipfile.ZipFile(page_cover) as a, zipfile.ZipFile(fig_cover) as c:
+        assert a.read("OEBPS/images/cover.jpg") != c.read("OEBPS/images/cover.jpg")
+        assert 'properties="cover-image"' in c.read("OEBPS/content.opf").decode()
+    runner = CliRunner()
+    res = runner.invoke(app, ["figures", str(fig_cover), "--out", str(tmp_path / "figs")])
+    assert res.exit_code == 0, res.output
+    assert "Figure 1" in res.output and (tmp_path / "figs" / "figures.png").exists()
+    res = runner.invoke(app, ["cover", str(page_cover), "--figure", "1", "--preview", str(tmp_path / "c.jpg")])
+    assert res.exit_code == 0, res.output
+    assert (tmp_path / "c.jpg").read_bytes()[:3] == b"\xff\xd8\xff"
