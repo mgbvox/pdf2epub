@@ -12,7 +12,7 @@ Convert PDFs, especially scientific papers, into reflowable EPUBs that are pleas
 | --- | --- | --- |
 | ![Inline math rendered on a phone](docs/phone-inline-math.png) | ![Display equation split for a narrow screen](docs/phone-equation.png) | ![Boxed prompt reflowed as text](docs/phone-text-box.png) |
 
-*Pixel-sized renders of the [EPUB](demo/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.epub) converted from [arXiv 2406.11717v3](demo/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.pdf). More papers, with their quality scores, are in [`demo/`](demo/README.md).*
+*Pixel-sized renders of the [EPUB](demo/PDF/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.epub) converted from [arXiv 2406.11717v3](demo/PDF/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.pdf). More papers, with their quality scores, are in [`demo/`](demo/README.md).*
 
 ## Install
 
@@ -88,7 +88,7 @@ The Kindle app does not open `.epub` files tapped in a file manager. Send them w
 - Email the file as an attachment to your `@kindle.com` address.
 - Upload it at <https://www.amazon.com/sendtokindle>.
 
-To get a file onto the phone in the first place, a direct download link works well: every EPUB committed to this repository is downloadable at `https://github.com/mgbvox/pdf2epub/raw/main/demo/<name>.epub`, where `<name>` is `{title_in_snake_case}-{arxiv_id}` (see [`demo/`](demo/README.md)).
+To get a file onto the phone in the first place, a direct download link works well: every EPUB committed to this repository is downloadable at `https://github.com/mgbvox/pdf2epub/raw/main/demo/PDF/<name>.epub` (web articles: `demo/web/<name>.epub`), where `<name>` is `{title_in_snake_case}-{arxiv_id}` (see [`demo/`](demo/README.md)).
 
 ## How it works
 
@@ -107,21 +107,22 @@ pip install -e ".[dev,qa]"                    # qa: playwright for phone preview
 pytest -m "not corpus"                        # fast synthetic-PDF test suite
 pytest -m corpus                              # the corpus quality gate (slow, see below)
 EPUBCHECK_JAR=/path/to/epubcheck.jar pytest   # also validate output with EPUBCheck (needs java)
-PDF2EPUB_SAMPLE_PDF=demo/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.pdf pytest   # also convert a real paper
+PDF2EPUB_SAMPLE_PDF=demo/PDF/refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.pdf pytest   # also convert a real paper
 ```
 
 ### Quality gate and corpus
 
-[`demo/`](demo/README.md) keeps every conversion that was delivered or used for development: the input PDF, the accepted EPUB and a `.quality.json` baseline with its fidelity metrics and lint counts, all named `{title_in_snake_case}-{arxiv_id}` (e.g. `attention_is_all_you_need-1706.03762.pdf`). It currently holds 12 CS and q-bio arXiv papers in NeurIPS, ICLR, ACL, CVPR and ICML layouts, including a Google-Docs PDF and math-heavy appendices.
+[`demo/`](demo/README.md) keeps every conversion that was delivered or used for development. `demo/PDF/` holds each input PDF, its accepted EPUB and a `.quality.json` baseline with fidelity metrics and lint counts, all named `{title_in_snake_case}-{arxiv_id}` (e.g. `attention_is_all_you_need-1706.03762.pdf`). `demo/web/` holds web articles converted with `pdf2epub web`: the accepted EPUB and a baseline that records the page URLs. Their page snapshots stay in a local cache. It currently holds 12 CS and q-bio arXiv papers in NeurIPS, ICLR, ACL, CVPR and ICML layouts, including a Google-Docs PDF and math-heavy appendices.
 
 **Policy: a change to the converter is committed only if it does not make any of these conversions worse, and makes at least one better.** The gate re-converts every PDF with the current code and compares it with its baseline:
 
 ```bash
 python tools/corpus_gate.py                   # check every entry (parallel); non-zero exit on regression
 python tools/corpus_gate.py --keep /tmp/new   # also keep the new EPUBs
-python tools/epub_diff.py demo/X.epub /tmp/new/X.epub --out /tmp/diff   # what exactly changed (text + images)
+python tools/epub_diff.py demo/PDF/X.epub /tmp/new/X.epub --out /tmp/diff   # what exactly changed (text + images)
 python tools/corpus_gate.py --update          # accept: rewrite demo/ EPUBs and baselines (refuses on regressions)
-python tools/corpus_gate.py --add 2505.19056.pdf  # add a new conversion (named {title_in_snake_case}-{arxiv_id})
+python tools/corpus_gate.py --add 2505.19056.pdf  # add a paper to demo/PDF (named {title_in_snake_case}-{arxiv_id})
+python tools/corpus_gate.py --add-web URL [URL ...]  # add a web article to demo/web
 python tools/corpus_gate.py --rescore         # after changing quality.py itself: re-score without converting
 ```
 

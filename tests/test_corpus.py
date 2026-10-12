@@ -1,7 +1,7 @@
 """Quality gate: every committed conversion must not get worse.
 
-Each ``demo/<name>.pdf`` is re-converted with the current code and compared
-with the accepted baseline ``demo/<name>.quality.json`` (fidelity metrics and
+Each ``demo/PDF/<name>.pdf`` is re-converted with the current code and compared
+with the accepted baseline ``demo/PDF/<name>.quality.json`` (fidelity metrics and
 lint counts from :mod:`pdf2epub.quality`). A failure means the change made at
 least one historical conversion worse; fix the change, or if the change is a
 deliberate trade-off, discuss it before accepting new baselines with
@@ -24,7 +24,8 @@ from pdf2epub.naming import arxiv_id, paper_stem
 ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT / "demo"
 
-COMMITTED = sorted(p for p in DEMO.glob("*.pdf") if p.with_suffix(".quality.json").exists())
+PDFS = DEMO / "PDF"
+COMMITTED = sorted(p for p in PDFS.glob("*.pdf") if p.with_suffix(".quality.json").exists())
 WEB_ENTRIES = sorted((DEMO / "web").glob("*.quality.json"))
 
 
@@ -38,14 +39,15 @@ def _check(pdf: Path, baseline: dict, tmp_path: Path) -> None:
 
 
 def test_every_committed_pdf_has_a_conversion_and_baseline():
-    for pdf in DEMO.glob("*.pdf"):
+    assert not list(DEMO.glob("*.pdf")), "PDF papers belong in demo/PDF/"
+    for pdf in PDFS.glob("*.pdf"):
         assert pdf.with_suffix(".epub").exists(), f"{pdf.name} has no committed EPUB next to it"
         assert pdf.with_suffix(".quality.json").exists(), f"{pdf.name} has no quality baseline (add it with tools/corpus_gate.py --add)"
 
 
 def test_corpus_files_are_named_title_dash_arxiv_id():
-    """demo/ files are named {title_in_snake_case}-{arxiv_id}.{ext}, the title being the EPUB's."""
-    for base in DEMO.glob("*.quality.json"):
+    """demo/PDF files are named {title_in_snake_case}-{arxiv_id}.{ext}, the title being the EPUB's."""
+    for base in PDFS.glob("*.quality.json"):
         stem = base.name[: -len(".quality.json")]
         title = json.loads(base.read_text()).get("source", {}).get("title", "")
         assert stem == paper_stem(title, arxiv_id(stem)), f"{stem} should be named {paper_stem(title, arxiv_id(stem))}"
@@ -58,15 +60,15 @@ def test_committed_conversion_does_not_regress(pdf: Path, tmp_path: Path):
 
 
 def test_web_corpus_manifests_are_complete_and_named_by_title():
-    """demo/web/<name>.quality.json: URLs + baseline only (page snapshots stay in .corpus/web/)."""
+    """demo/web/<name>.{epub,quality.json}: the accepted EPUB and its baseline (page snapshots stay in .corpus/web/)."""
     for base in WEB_ENTRIES:
         data = json.loads(base.read_text())
         name = base.name[: -len(".quality.json")]
         assert data.get("kind") == "web" and data.get("urls"), f"{name}: needs kind=web and its URLs"
         assert {"metrics", "issue_counts", "source", "source_fingerprint"} <= data.keys(), f"{name}: incomplete baseline"
         assert name == paper_stem(data["source"]["title"], arxiv_id(data["urls"][0])), f"{name} is not named after its title"
-    assert not list((DEMO / "web").glob("*.epub")) and not list((DEMO / "web").glob("*.mhtml")), \
-        "web article content belongs in the git-ignored .corpus/web/ cache, not in demo/web/"
+        assert base.with_name(f"{name}.epub").exists(), f"{name}: no accepted EPUB next to its baseline"
+    assert not list((DEMO / "web").glob("*.mhtml")), "page snapshots belong in the git-ignored .corpus/web/ cache"
 
 
 @pytest.mark.corpus

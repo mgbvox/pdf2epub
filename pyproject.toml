@@ -37,4 +37,4 @@ packages = ["src/pdf2epub"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["corpus: re-converts every committed PDF in demo/ and checks it against its quality baseline (slow)"]
+markers = ["corpus: re-converts every committed conversion in demo/PDF and demo/web and checks it against its quality baseline (slow)"]

@@ -1,6 +1,6 @@
 """Quality gate over every committed conversion in ``demo/``.
 
-Each ``demo/<name>.pdf`` sits next to its accepted ``<name>.epub`` and a
+Each ``demo/PDF/<name>.pdf`` sits next to its accepted ``<name>.epub`` and a
 ``<name>.quality.json`` baseline (fidelity metrics, lint counts, structure
 counts and the conversion options used). ``<name>`` is
 ``{title_in_snake_case}-{arxiv_id}`` (see :mod:`pdf2epub.naming`), e.g.
@@ -17,13 +17,12 @@ regression against the baseline.
     python tools/corpus_gate.py --rescore       # metric change only: re-score the committed EPUBs
     python tools/corpus_gate.py --add-web URL [URL ...] [--title ... -a ...]   # add a web article (demo/web/)
 
-Web articles (``pdf2epub web``) have their own section, ``demo/web/<name>.quality.json``:
-the URLs, options and quality baseline. The page snapshots (MHTML), the
-reference text and the accepted EPUB are third-party content, so they stay in
-the git-ignored cache ``.corpus/web/<name>/`` and are not published with this
-repository. The gate re-snapshots a page when the cache is empty; if the page
-itself has changed since the baseline (its text fingerprint differs) the entry
-is reported as ``SOURCE CHANGED`` instead of being compared.
+Web articles (``pdf2epub web``) have their own section: ``demo/web/<name>.epub``
+and ``<name>.quality.json`` (URLs, options, quality baseline). The page
+snapshots (MHTML) and reference text stay in the git-ignored cache
+``.corpus/web/<name>/``; the gate re-snapshots a page when the cache is empty.
+If the page itself has changed since the baseline (its text fingerprint
+differs) the entry is reported as ``SOURCE CHANGED`` instead of being compared.
 
 Policy: commit a code change only if this gate passes on every entry. When the
 change improves the corpus, run ``--update`` and commit the regenerated EPUBs
@@ -49,8 +48,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT / "demo"
-WEB = DEMO / "web"  # committed: manifests + baselines of web articles
-WEB_CACHE = ROOT / ".corpus" / "web"  # git-ignored: snapshots, reference text, accepted EPUBs
+PDFS = DEMO / "PDF"  # committed: PDF papers, their accepted EPUBs and baselines
+WEB = DEMO / "web"  # committed: web articles' accepted EPUBs and baselines
+WEB_CACHE = ROOT / ".corpus" / "web"  # git-ignored: page snapshots and reference text
 sys.path.insert(0, str(ROOT / "src"))
 
 
@@ -70,7 +70,7 @@ def _selected(stem: str, names: list[str]) -> bool:
 
 def entries(names: list[str] | None = None) -> list[dict]:
     out = []
-    for pdf in sorted(DEMO.glob("*.pdf")):
+    for pdf in sorted(PDFS.glob("*.pdf")):
         if names and not _selected(pdf.stem, names):
             continue
         base = pdf.with_suffix(".quality.json")
@@ -153,9 +153,9 @@ def run_web(entry: dict, out_dir: str) -> dict:
 def _accept_web(name: str, res: dict) -> None:
     WEB.mkdir(parents=True, exist_ok=True)
     (WEB / f"{name}.quality.json").write_text(json.dumps(res["current"], indent=2) + "\n")
+    shutil.copyfile(res["epub"], WEB / f"{name}.epub")
     cache = WEB_CACHE / name
     cache.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(res["epub"], cache / "accepted.epub")
     (cache / "reference.txt").write_text(res["reference"], encoding="utf-8")
 
 
@@ -171,14 +171,15 @@ def write_index() -> None:
         label = _label(e["name"])
         paper = f"[{label}](https://arxiv.org/abs/{label})" if label != e["name"][:40] else label
         rows.append(
-            f"| {paper} | {title} | [pdf]({e['name']}.pdf) · [epub]({e['name']}.epub) | {b.get('source', {}).get('pages', '')} "
+            f"| {paper} | {title} | [pdf](PDF/{e['name']}.pdf) · [epub](PDF/{e['name']}.epub) | {b.get('source', {}).get('pages', '')} "
             f"| {c.get('figures', 0)}/{c.get('tables', 0)}/{c.get('equations', 0)} | {m.get('word_recall', 0):.3f} "
             f"| {m.get('order_score', 0):.3f} | {issues} |"
         )
     text = (
         "# Conversion corpus\n\n"
-        "Every conversion delivered or used for development is kept here: the input PDF, the accepted EPUB, and a\n"
-        "`.quality.json` baseline. `tests/test_corpus.py` and `tools/corpus_gate.py` re-convert each PDF with the\n"
+        "Every conversion delivered or used for development is kept here, in `PDF/` (papers) and `web/` (web\n"
+        "articles): the source, the accepted EPUB, and a `.quality.json` baseline. `tests/test_corpus.py` and\n"
+        "`tools/corpus_gate.py` re-convert each source with the\n"
         "current code and fail if any quality metric gets worse. Code changes are committed only when the gate passes,\n"
         "and improvements are accepted with `python tools/corpus_gate.py --update`, which rewrites these files.\n"
         "Files are named `{title_in_snake_case}-{arxiv_id}.{pdf,epub,quality.json}`.\n\n"
@@ -196,15 +197,15 @@ def write_index() -> None:
         m, c = b.get("metrics", {}), b.get("counts", {})
         title = b.get("source", {}).get("title", "").replace("|", "\\|")
         links = " · ".join(f"[page {i + 1}]({u})" for i, u in enumerate(e["urls"]))
-        web_rows.append(f"| `{e['name']}` | {title} | {links} | {c.get('figures', 0)}/{c.get('tables', 0)}/{c.get('equations', 0)} "
+        web_rows.append(f"| [epub](web/{e['name']}.epub) | {title} | {links} | {c.get('figures', 0)}/{c.get('tables', 0)}/{c.get('equations', 0)} "
                         f"| {m.get('word_recall', 0):.3f} | {m.get('order_score', 0):.3f} | {sum(b.get('issue_counts', {}).values())} |")
     if web_rows:
         text += (
             "\n## Web articles (`pdf2epub web`)\n\n"
-            "Baselines for the web converter live in [`web/`](web/): URLs, options and quality numbers only. The page\n"
-            "snapshots and EPUBs are third-party content and stay in the git-ignored cache `.corpus/web/`; the gate\n"
-            "re-snapshots a page when that cache is empty. recall is measured against the page's visible text.\n\n"
-            "| Name | Title | Source | fig/tab/eq | recall | order | issues |\n"
+            "The web converter's corpus is in [`web/`](web/): the accepted EPUB and a baseline with the page URLs. The\n"
+            "page snapshots stay in the git-ignored cache `.corpus/web/`; the gate re-snapshots a page when that cache\n"
+            "is empty. recall is measured against the page's visible text.\n\n"
+            "| File | Title | Source | fig/tab/eq | recall | order | issues |\n"
             "| --- | --- | --- | :---: | ---: | ---: | ---: |\n"
             + "\n".join(web_rows) + "\n"
         )
@@ -213,13 +214,13 @@ def write_index() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("names", nargs="*", help="entry names (file stems in demo/); default: all")
+    ap.add_argument("names", nargs="*", help="entry names (file stems in demo/PDF or demo/web, or arXiv ids); default: all")
     ap.add_argument("--jobs", type=int, default=3, help="parallel conversions (default 3)")
     ap.add_argument("--update", action="store_true", help="accept the current output as the new baseline")
     ap.add_argument("--force", action="store_true", help="with --update: accept even if something regressed")
     ap.add_argument("--keep", type=Path, help="copy the new EPUBs here for inspection")
     ap.add_argument("--show-issues", action="store_true", help="print every lint issue of the new output")
-    ap.add_argument("--add", type=Path, help="add a PDF to the corpus (copied into demo/)")
+    ap.add_argument("--add", type=Path, help="add a PDF to the corpus (copied into demo/PDF/)")
     ap.add_argument("--arxiv", help="with --add: arXiv id (default: found in the PDF's file name)")
     ap.add_argument("--name", help="with --add: override the file stem (default: {title_in_snake_case}-{arxiv_id})")
     ap.add_argument("--title")
@@ -250,10 +251,10 @@ def main(argv: list[str] | None = None) -> int:
             pdf.with_suffix(".quality.json").write_text(json.dumps(data, indent=2) + "\n")
         for e in web_entries(args.names or None):
             cache = WEB_CACHE / e["name"]
-            if not (cache / "accepted.epub").exists() or not (cache / "reference.txt").exists():
-                print(f"{e['name'][:40]:<40} skipped: no cached EPUB/reference (run the gate once to rebuild the cache)")
+            if not (cache / "reference.txt").exists():
+                print(f"{e['name'][:40]:<40} skipped: no cached reference text (run the gate once to rebuild the cache)")
                 continue
-            data = quality.evaluate_web((cache / "reference.txt").read_text(encoding="utf-8"), cache / "accepted.epub").to_json()
+            data = quality.evaluate_web((cache / "reference.txt").read_text(encoding="utf-8"), WEB / f"{e['name']}.epub").to_json()
             for key in ("kind", "urls", "options", "source", "source_fingerprint"):
                 if key in e["baseline"]:
                     data[key] = e["baseline"][key]
@@ -283,7 +284,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         write_index()
-        print(f"added demo/web/{name}.quality.json (snapshots and EPUB cached in .corpus/web/{name}/): "
+        print(f"added demo/web/{name}.{{epub,quality.json}} (page snapshots cached in .corpus/web/{name}/): "
               + json.dumps(res["current"]["metrics"]) + f" issues={sum(res['current']['issue_counts'].values())}")
         return 0
     if args.add:
@@ -303,11 +304,11 @@ def main(argv: list[str] | None = None) -> int:
         try:
             res = run_one({"name": "new", "pdf": str(args.add), "options": opts, "baseline": {}}, str(tmp))
             name = args.name or paper_stem(res["current"]["source"]["title"], aid)
-            dest = DEMO / f"{name}.pdf"
+            dest = PDFS / f"{name}.pdf"
             if dest.exists() and dest.resolve() != args.add.resolve():
                 print(f"{dest} already exists")
                 return 1
-            DEMO.mkdir(exist_ok=True)
+            PDFS.mkdir(parents=True, exist_ok=True)
             if args.add.resolve() != dest.resolve():
                 shutil.copyfile(args.add, dest)
             shutil.copyfile(res["epub"], dest.with_suffix(".epub"))
@@ -315,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             shutil.rmtree(tmp, ignore_errors=True)
         write_index()
-        print(f"added demo/{name}.{{pdf,epub,quality.json}}: " + json.dumps(res["current"]["metrics"])
+        print(f"added demo/PDF/{name}.{{pdf,epub,quality.json}}: " + json.dumps(res["current"]["metrics"])
               + f" issues={sum(res['current']['issue_counts'].values())}")
         return 0
 
@@ -324,7 +325,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.names:
         unknown = [n for n in args.names if not any(_selected(e["name"], [n]) or e["name"].startswith(n) for e in todo)]
         if unknown:
-            print("no corpus entry matches: " + ", ".join(unknown) + " (use an arXiv id or a full name from demo/)")
+            print("no corpus entry matches: " + ", ".join(unknown) + " (use an arXiv id or a full name from demo/PDF or demo/web)")
             return 2
     tmp = Path(tempfile.mkdtemp(prefix="pdf2epub-gate-"))
     results = []

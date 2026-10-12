@@ -1,7 +1,7 @@
 """File names for converted papers: ``{title_in_snake_case}-{arxiv_id}.{ext}``.
 
 Example: ``refusal_in_language_models_is_mediated_by_a_single_direction-2406.11717v3.epub``.
-The corpus in ``demo/`` uses this for the PDF, the EPUB and the quality baseline,
+The corpus in ``demo/PDF`` uses this for the PDF, the EPUB and the quality baseline,
 and ``pdf2epub convert`` uses it for its default output name when the input file
 name contains an arXiv id.
 """

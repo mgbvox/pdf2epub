@@ -15,17 +15,18 @@ For the module map, the main heuristics and their known traps, read
 
 ## Ground rules
 
-1. **The corpus is the yardstick.** `demo/` holds every conversion ever delivered or used for development:
-   `<name>.pdf`, the accepted `<name>.epub`, and a `<name>.quality.json` baseline, where `<name>` is
+1. **The corpus is the yardstick.** `demo/` holds every conversion ever delivered or used for development.
+   `demo/PDF/` has `<name>.pdf`, the accepted `<name>.epub`, and a `<name>.quality.json` baseline, where `<name>` is
    `{title_in_snake_case}-{arxiv_id}` (e.g. `attention_is_all_you_need-1706.03762`; `pdf2epub.naming`
-   builds it, and a test enforces it). **Commit converter
+   builds it, and a test enforces it). `demo/web/` has the web articles (`pdf2epub web`): `<name>.epub` and
+   `<name>.quality.json`. **Commit converter
    code only when `python tools/corpus_gate.py` passes on every entry and improves at least one.** A fix
    that helps one paper but makes another worse is not done. Either find a version that is neutral
    elsewhere, or ask the user about the trade-off before you `--force` it.
 2. **Every conversion you deliver goes into the corpus** (`--add`, below), committed next to its PDF, so
    later changes are measured against it.
 3. **Code and the outputs it produces are committed together.** After a passing gate, `--update` rewrites
-   the EPUBs and baselines in `demo/`. Commit those files in the same commit as the code, so the
+   the EPUBs and baselines in `demo/PDF` and `demo/web`. Commit those files in the same commit as the code, so the
    `*.quality.json` diff shows what improved.
 4. **Metric changes are separate commits.** If you change `src/pdf2epub/quality.py` (a lint rule, a
    metric), you changed the yardstick, not the conversions. Run `python tools/corpus_gate.py --rescore`,
@@ -35,6 +36,10 @@ For the module map, the main heuristics and their known traps, read
 6. **The repository is public.** Never write the user's email address, tokens or other personal data
    into any file. Get the user's address from the session context when you need it. Before committing a
    PDF that is not openly published (anything other than arXiv-style public papers), ask the user.
+7. **Deliver files by emailing a direct download link.** Downloads offered through Claude (the app's
+   file cards, the session's file-sending tool) do not work on the user's phone. Every file the user
+   should get goes into the repository, gets pushed, and gets its verified raw GitHub link emailed to
+   them (Workflow A, steps 5–7).
 
 ## Setup
 
@@ -61,22 +66,22 @@ Optional tools:
 3. **Run the quality pass** (Workflow B) and fix what it finds. Converter fixes follow Workflow C.
 4. **Add it to the corpus:**
    `.venv/bin/python tools/corpus_gate.py --add /tmp/in/<id>.pdf [--title "..." -a "..."]`.
-   This converts it with the current code and writes `demo/<name>.pdf`, `.epub` and `.quality.json`
+   This converts it with the current code and writes `demo/PDF/<name>.pdf`, `.epub` and `.quality.json`
    with `<name>` = `{title_in_snake_case}-{id}`, plus the regenerated `demo/README.md` index. It takes
    the arXiv id from the file name; pass `--arxiv <id>` for an upload whose name lacks it. It refuses
    an arXiv id that is already in the corpus. Note the `<name>` it prints for the next steps.
-5. **Commit and push** `demo/<name>.*` and `demo/README.md` to the branch the user's link should point
+5. **Commit and push** `demo/PDF/<name>.*` and `demo/README.md` to the branch the user's link should point
    to (normally `main`).
 6. **Verify the download link** before sending it. Raw files are served at
-   `https://github.com/mgbvox/pdf2epub/raw/<branch>/demo/<name>.epub`:
+   `https://github.com/mgbvox/pdf2epub/raw/<branch>/demo/PDF/<name>.epub` (web articles: `demo/web/`):
    ```bash
-   curl -fsSL -o /tmp/check.epub "https://github.com/mgbvox/pdf2epub/raw/main/demo/<name>.epub" \
-     && cmp /tmp/check.epub demo/<name>.epub && echo "link OK"
+   curl -fsSL -o /tmp/check.epub "https://github.com/mgbvox/pdf2epub/raw/main/demo/PDF/<name>.epub" \
+     && cmp /tmp/check.epub demo/PDF/<name>.epub && echo "link OK"
    ```
    A fresh push can take a few seconds to be served. Retry `curl` before concluding it failed.
 7. **Email the link** with the Gmail connector (`send_message`; load it with ToolSearch if it is
    deferred). Send it to the user's own address taken from the session context. Include:
-   - the direct `.../raw/main/demo/<name>.epub` link (one tap downloads it on Android; the file name
+   - the direct `.../raw/main/demo/PDF/<name>.epub` link (one tap downloads it on Android; the file name
      carries the title, so it is recognisable in the Kindle library and downloads folder);
    - the paper title and what was checked (e.g. "EPUBCheck clean, 0 lint issues");
    - the Kindle steps below.
@@ -104,17 +109,16 @@ with the live page. `pdf2epub check` needs a PDF, so instead diff the words agai
 `main.innerText` (as `quality.epub_words` does). `src/pdf2epub/web.py` documents the DOM rules; extend
 them when a site's markup is not handled, and add a case to `tests/test_web.py`.
 
-**Web articles are usually third-party content without an open license.** Their text, snapshots and
-EPUBs must not be pushed to this public repository. Deliver the EPUB privately: send the file to the
-user's app (e.g. the session's file-sending tool), not as a public link.
-
-The web converter has its own corpus section: `python tools/corpus_gate.py --add-web URL [URL...]`. It
-commits only `demo/web/<name>.quality.json` (URLs, options, quality baseline, a fingerprint of the page
-text). The MHTML snapshots, reference text and accepted EPUB go in the git-ignored `.corpus/web/<name>/`.
-The gate (`--web-only` / `--pdf-only` to narrow it) converts from those snapshots and re-captures them from
-the live URLs when the cache is empty. If the page itself has changed, the entry reports `SOURCE CHANGED`
-instead of a comparison; review the new conversion, then `--update`. Changes to `src/pdf2epub/web.py`
-follow the same rule as converter changes: the gate must pass on the web entries.
+**Web articles are usually third-party content without an open license.** Ask the user before adding a
+new one to the public repository. Once they agree, add it to the web corpus:
+`python tools/corpus_gate.py --add-web URL [URL...]`. That commits `demo/web/<name>.epub` and
+`<name>.quality.json`, which holds the URLs, options, quality baseline and a fingerprint of the page text.
+The MHTML page snapshots and the reference text stay in the git-ignored `.corpus/web/<name>/`. The gate
+(`--web-only` / `--pdf-only` to narrow it) converts from those snapshots, and re-captures them from the
+live URLs when the cache is empty. If the page itself has changed, the entry reports `SOURCE CHANGED`
+instead of a comparison; review the new conversion, then run `--update`. Changes to
+`src/pdf2epub/web.py` follow the same rule as converter changes: the gate must pass on the web entries.
+Deliver the EPUB like any other: push it, then email the verified `.../raw/main/demo/web/<name>.epub` link.
 
 ## Workflow B: quality pass and refinement of one conversion
 
@@ -172,7 +176,7 @@ finding maps back to a page of the source.
    intermediate stages in Python:
    ```python
    from pdf2epub.converter import analyze, build_document
-   doc, pages, stats, layouts = analyze("demo/x.pdf", [N - 1])     # 0-based page indices
+   doc, pages, stats, layouts = analyze("demo/PDF/x.pdf", [N - 1])     # 0-based page indices
    for r in pages[0].rows: print(round(r.baseline, 1), r.box, r.text[:80])
    document = build_document(doc, pages, stats, layouts)
    ```
@@ -191,14 +195,14 @@ finding maps back to a page of the source.
    duplicate-paragraph or hyphen-leftover count up.
 5. **Review what changed, even when the gate passes.** The metrics cannot see every visual regression:
    ```bash
-   .venv/bin/python tools/epub_diff.py demo/<name>.epub /tmp/new/<name>.epub --out /tmp/diff/<name> --context 1
+   .venv/bin/python tools/epub_diff.py demo/PDF/<name>.epub /tmp/new/<name>.epub --out /tmp/diff/<name> --context 1
    ```
    It prints a diff of the reading flow (one line per block with page and alt texts) and saves old and
    new versions of every changed image. View the images and check doubtful pages against
    `pdf2epub inspect`. For a large change, have independent reviewers do this per paper, and tell them to
    look for regressions specifically.
 6. **Accept:** `.venv/bin/python tools/corpus_gate.py --update`. It refuses if anything regressed. Then
-   commit the code, `demo/*.epub`, `demo/*.quality.json` and `demo/README.md` together. Push.
+   commit the code, `demo/PDF/*`, `demo/web/*` and `demo/README.md` together. Push.
 7. **The pytest version of the gate** is `pytest -m corpus`. It is slower and serial; the tool is better
    while iterating.
 
@@ -206,5 +210,5 @@ finding maps back to a page of the source.
 
 - `tools/run_corpus.py` downloads and converts a list of arXiv ids into `.corpus/` (gitignored). Use it
   for exploratory runs on papers that are not (yet) in the corpus.
-- `demo/` is ~125 MB and grows with each paper. If it gets unwieldy, propose moving `demo/*.pdf` and
-  `demo/*.epub` to Git LFS to the user; don't do it unasked.
+- `demo/` is ~125 MB and grows with each paper. If it gets unwieldy, propose moving `demo/PDF/*.pdf` and
+  the EPUBs to Git LFS to the user; don't do it unasked.

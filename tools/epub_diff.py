@@ -5,7 +5,7 @@ of the reading flow (one line per block: tag, class, PDF page, text with image
 alt texts in brackets) and, with ``--out``, saves every image that is new or
 changed so old and new crops can be compared by eye.
 
-    python tools/epub_diff.py demo/attention_is_all_you_need-1706.03762.epub /tmp/new/attention_is_all_you_need-1706.03762.epub
+    python tools/epub_diff.py demo/PDF/attention_is_all_you_need-1706.03762.epub /tmp/new/attention_is_all_you_need-1706.03762.epub
     python tools/epub_diff.py old.epub new.epub --out /tmp/diff --context 1
 
 Typical use after ``python tools/corpus_gate.py --keep /tmp/new``: diff each
