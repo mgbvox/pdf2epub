@@ -94,6 +94,21 @@ file manager or browser; the phone just vibrates or nothing happens. Use **Send 
   Kindle email").
 - Or upload it at <https://www.amazon.com/sendtokindle>.
 
+### Web articles (HTML instead of PDF)
+
+For a blog post or web paper, use `.venv/bin/pdf2epub web URL [MORE_URLS...] -o /tmp/out/<name>.epub`.
+Pass the article plus pages it links as part of itself (e.g. a separate appendix page) to get one book.
+Name the file `{title_in_snake_case}` (plus `-{arxiv_id}` if the work has one); without `-o` that is the
+default. Quality pass: run EPUBCheck, look at phone previews (light and `--dark`), and compare the text
+with the live page. `pdf2epub check` needs a PDF, so instead diff the words against the page's
+`main.innerText` (as `quality.epub_words` does). `src/pdf2epub/web.py` documents the DOM rules; extend
+them when a site's markup is not handled, and add a case to `tests/test_web.py`.
+
+**Web articles are usually third-party content without an open license.** Do not add them to `demo/` or
+push them to this public repository unless the user confirms they may be redistributed. Deliver the
+EPUB privately instead: send the file to the user's app (e.g. the session's file-sending tool), and
+ask before using any public link.
+
 ## Workflow B: quality pass and refinement of one conversion
 
 Work through these steps in order. Every EPUB block carries `data-page="N"` (1-based PDF page), so every

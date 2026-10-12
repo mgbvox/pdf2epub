@@ -52,6 +52,23 @@ pdf2epub check paper.pdf paper.epub            # score a conversion: fidelity me
 
 `pdf2epub check` compares the EPUB's text with the PDF (word and bigram recall/precision, reading-order score) and lists likely defects (split paragraphs, stray fragments, unjoined hyphens, oversized inline formulas, blank images, missing captions…) with the PDF page of each, so they can be traced with `inspect --pages N`.
 
+## Web articles
+
+Research blog posts and other HTML articles convert directly, without a detour through PDF:
+
+```bash
+pip install -e ".[web]"                        # Playwright; uses an installed Chromium
+pdf2epub web https://example.org/post          # writes {title_in_snake_case}.epub here
+pdf2epub web https://example.org/post https://example.org/post/appendix.html -o post.epub   # several pages, one book
+```
+
+The page is rendered in headless Chromium, so client-side math (KaTeX, MathJax, MathML) and plots are drawn,
+then the article's DOM is walked. Text, headings, lists, links and citations become real text, and site
+navigation, sidebars, buttons and hover cards are dropped. Simple inline formulas stay text. Others become
+sharp images aligned to the baseline, with their TeX as alt text. Display equations and figures become
+trimmed high-resolution screenshots, with captions and equation numbers as text. Plain data tables
+become real tables. Links between the converted pages point into the book.
+
 ## Library
 
 ```python
