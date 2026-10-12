@@ -104,10 +104,17 @@ with the live page. `pdf2epub check` needs a PDF, so instead diff the words agai
 `main.innerText` (as `quality.epub_words` does). `src/pdf2epub/web.py` documents the DOM rules; extend
 them when a site's markup is not handled, and add a case to `tests/test_web.py`.
 
-**Web articles are usually third-party content without an open license.** Do not add them to `demo/` or
-push them to this public repository unless the user confirms they may be redistributed. Deliver the
-EPUB privately instead: send the file to the user's app (e.g. the session's file-sending tool), and
-ask before using any public link.
+**Web articles are usually third-party content without an open license.** Their text, snapshots and
+EPUBs must not be pushed to this public repository. Deliver the EPUB privately: send the file to the
+user's app (e.g. the session's file-sending tool), not as a public link.
+
+The web converter has its own corpus section: `python tools/corpus_gate.py --add-web URL [URL...]`. It
+commits only `demo/web/<name>.quality.json` (URLs, options, quality baseline, a fingerprint of the page
+text). The MHTML snapshots, reference text and accepted EPUB go in the git-ignored `.corpus/web/<name>/`.
+The gate (`--web-only` / `--pdf-only` to narrow it) converts from those snapshots and re-captures them from
+the live URLs when the cache is empty. If the page itself has changed, the entry reports `SOURCE CHANGED`
+instead of a comparison; review the new conversion, then `--update`. Changes to `src/pdf2epub/web.py`
+follow the same rule as converter changes: the gate must pass on the web entries.
 
 ## Workflow B: quality pass and refinement of one conversion
 

@@ -325,8 +325,15 @@ def _order_score(src: list[str], dst: list[str], chunk: int = 50, probe: int = 6
 
 
 def fidelity(pdf_path: str | Path, epub_path: str | Path, pages: list[int] | None = None) -> dict:
-    src = pdf_words(pdf_path, pages)
-    dst = epub_words(epub_path)
+    return _fidelity_words(pdf_words(pdf_path, pages), epub_words(epub_path))
+
+
+def text_fidelity(reference_text: str, epub_path: str | Path) -> dict:
+    """The same metrics against a reference text (a web page's visible article text)."""
+    return _fidelity_words(_norm_words(reference_text.split()), epub_words(epub_path))
+
+
+def _fidelity_words(src: list[str], dst: list[str]) -> dict:
     cs, cd = Counter(src), Counter(dst)
     bs, bd = Counter(zip(src, src[1:])), Counter(zip(dst, dst[1:]))
     common, bcommon = _overlap(cs, cd), _overlap(bs, bd)
@@ -351,7 +358,8 @@ def structure_counts(epub_path: str | Path) -> dict:
         "paragraphs": sum(1 for b in blocks if b.tag == "p"),
         "headings": sum(1 for b in blocks if b.tag in ("h2", "h3", "h4", "h5", "h6")),
         "figures": html.count('<div class="figure"'),
-        "tables": html.count('<div class="figure table"'),
+        # table images (PDF pipeline) and real tables (web pipeline)
+        "tables": html.count('<div class="figure table"') + html.count('<div class="table"'),
         "equations": html.count('<div class="eq"'),
         "text_boxes": html.count('<div class="boxwrap"'),
         "algorithms": html.count('<div class="boxwrap algo"'),
@@ -364,6 +372,15 @@ def structure_counts(epub_path: str | Path) -> dict:
 def evaluate(pdf_path: str | Path, epub_path: str | Path, pages: list[int] | None = None) -> QualityReport:
     return QualityReport(
         metrics=fidelity(pdf_path, epub_path, pages),
+        counts=structure_counts(epub_path),
+        issues=lint(epub_path),
+    )
+
+
+def evaluate_web(reference_text: str, epub_path: str | Path) -> QualityReport:
+    """Score a web-article EPUB against the pages' visible text (see :mod:`pdf2epub.web`)."""
+    return QualityReport(
+        metrics=text_fidelity(reference_text, epub_path),
         counts=structure_counts(epub_path),
         issues=lint(epub_path),
     )

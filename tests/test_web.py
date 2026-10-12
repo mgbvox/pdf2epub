@@ -92,7 +92,8 @@ def test_structure_text_and_links(book):
 
 def test_simple_math_is_text_and_complex_math_an_aligned_image(book):
     t = book["text"]
-    assert "<i>x</i><sub><i>i</i></sub> = 2" in t
+    # linear math stays text, unbreakable, with no-break spaces around the relation
+    assert '<span class="tm"><i>x</i><sub><i>i</i></sub>\u00a0=\u00a02</span>' in t
     m = re.search(r'<img class="m"[^>]*alt="\\frac\{a\}\{b\}"[^>]*style="height:[\d.]+em;width:[\d.]+em;vertical-align:-?[\d.]+em"', t)
     assert m, "fraction should be an inline image with its TeX as alt text"
 
@@ -101,6 +102,8 @@ def test_figure_is_an_image_with_text_caption_and_table_is_a_real_table(book):
     t = book["text"]
     assert re.search(r'<div class="figure" id="fig-1"><div class="img"><img class="fig"[^>]*alt="Figure 1"', t)
     assert '<p class="caption">Figure 1: A blue rectangle.</p>' in t
-    assert re.search(r'<div class="table" id="tab-1"><table class="data"><tr><th>Model</th><th class="r">Score</th></tr>', t)
-    assert '<td class="r">71.2</td>' in t and '<p class="caption">Table 1: Numbers.</p>' in t
+    # a <caption> is above its table, as in the browser; the number column's header follows its data
+    assert re.search(r'<div class="table" id="tab-1"><p class="caption">Table 1: Numbers\.</p><table class="data">'
+                     r'<tr class="head"><th>Model</th><th class="r">Score</th></tr>', t)
+    assert '<td class="r">71.2</td>' in t
     assert "table.data" in book["css"]

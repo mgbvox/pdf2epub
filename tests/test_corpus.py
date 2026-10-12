@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT / "demo"
 
 COMMITTED = sorted(p for p in DEMO.glob("*.pdf") if p.with_suffix(".quality.json").exists())
+WEB_ENTRIES = sorted((DEMO / "web").glob("*.quality.json"))
 
 
 def _check(pdf: Path, baseline: dict, tmp_path: Path) -> None:
@@ -54,3 +55,33 @@ def test_corpus_files_are_named_title_dash_arxiv_id():
 @pytest.mark.parametrize("pdf", COMMITTED, ids=[p.stem for p in COMMITTED])
 def test_committed_conversion_does_not_regress(pdf: Path, tmp_path: Path):
     _check(pdf, json.loads(pdf.with_suffix(".quality.json").read_text()), tmp_path)
+
+
+def test_web_corpus_manifests_are_complete_and_named_by_title():
+    """demo/web/<name>.quality.json: URLs + baseline only (page snapshots stay in .corpus/web/)."""
+    for base in WEB_ENTRIES:
+        data = json.loads(base.read_text())
+        name = base.name[: -len(".quality.json")]
+        assert data.get("kind") == "web" and data.get("urls"), f"{name}: needs kind=web and its URLs"
+        assert {"metrics", "issue_counts", "source", "source_fingerprint"} <= data.keys(), f"{name}: incomplete baseline"
+        assert name == paper_stem(data["source"]["title"], arxiv_id(data["urls"][0])), f"{name} is not named after its title"
+    assert not list((DEMO / "web").glob("*.epub")) and not list((DEMO / "web").glob("*.mhtml")), \
+        "web article content belongs in the git-ignored .corpus/web/ cache, not in demo/web/"
+
+
+@pytest.mark.corpus
+@pytest.mark.parametrize("base", WEB_ENTRIES, ids=[b.name[: -len(".quality.json")] for b in WEB_ENTRIES])
+def test_web_conversion_does_not_regress(base: Path, tmp_path: Path):
+    pytest.importorskip("playwright.sync_api")
+    import sys
+
+    sys.path.insert(0, str(ROOT / "tools"))
+    import corpus_gate
+
+    data = json.loads(base.read_text())
+    name = base.name[: -len(".quality.json")]
+    res = corpus_gate.run_web({"name": name, "urls": data["urls"], "options": data.get("options", {})}, str(tmp_path))
+    if res["current"]["source_fingerprint"] != data["source_fingerprint"]:
+        pytest.skip(f"{name}: the live page changed since its baseline; review and accept with corpus_gate.py --update")
+    regressions = quality.compare(data, res["current"])
+    assert not regressions, f"{name} regressed: {regressions}"

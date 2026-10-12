@@ -1,0 +1,33 @@
+{
+  "metrics": {
+    "word_recall": 0.9658,
+    "word_precision": 0.9508,
+    "bigram_recall": 0.9508,
+    "bigram_precision": 0.9361,
+    "order_score": 1.0
+  },
+  "counts": {
+    "paragraphs": 84,
+    "headings": 23,
+    "figures": 7,
+    "tables": 8,
+    "equations": 5,
+    "text_boxes": 0,
+    "algorithms": 0,
+    "footnotes": 0,
+    "inline_math_images": 10,
+    "images": 23
+  },
+  "issue_counts": {},
+  "kind": "web",
+  "urls": [
+    "https://qlabs.sh/research/dust",
+    "https://qlabs.sh/research/dust/appendix.html"
+  ],
+  "options": {},
+  "source": {
+    "pages": 2,
+    "title": "Dust: Pretraining Transformers Without Backpropagation"
+  },
+  "source_fingerprint": "9cbceabe0e5a20e2"
+}

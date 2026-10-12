@@ -26,3 +26,13 @@ EPUB (text and alt text); order = reading-order score; issues = lint findings (l
 | [2610.11729](https://arxiv.org/abs/2610.11729) | Three-dimensional imaging of isolated membrane-protein complexes in vacuo with an X-ray laser | [pdf](three_dimensional_imaging_of_isolated_membrane_protein_complexes_in_vacuo_with_an_x_ray_laser-2610.11729.pdf) · [epub](three_dimensional_imaging_of_isolated_membrane_protein_complexes_in_vacuo_with_an_x_ray_laser-2610.11729.epub) | 36 | 17/4/0 | 0.972 | 0.994 | 18 |
 | [2610.10913](https://arxiv.org/abs/2610.10913) | Toward Reliable Patient-Specific Aortic Strain Mapping from 4D CTA: Validation, Spectral Structure, and Clinical Potential | [pdf](toward_reliable_patient_specific_aortic_strain_mapping_from_4d_cta_validation_spectral_structure_and_clinical_potential-2610.10913.pdf) · [epub](toward_reliable_patient_specific_aortic_strain_mapping_from_4d_cta_validation_spectral_structure_and_clinical_potential-2610.10913.epub) | 30 | 8/6/13 | 0.975 | 0.993 | 14 |
 | [2610.10482](https://arxiv.org/abs/2610.10482) | Truecell reproduces R Seurat's single-cell analysis outputs natively in the Python ecosystem | [pdf](truecell_reproduces_r_seurats_single_cell_analysis_outputs_natively_in_the_python_ecosystem-2610.10482.pdf) · [epub](truecell_reproduces_r_seurats_single_cell_analysis_outputs_natively_in_the_python_ecosystem-2610.10482.epub) | 24 | 9/4/0 | 0.870 | 1.000 | 11 |
+
+## Web articles (`pdf2epub web`)
+
+Baselines for the web converter live in [`web/`](web/): URLs, options and quality numbers only. The page
+snapshots and EPUBs are third-party content and stay in the git-ignored cache `.corpus/web/`; the gate
+re-snapshots a page when that cache is empty. recall is measured against the page's visible text.
+
+| Name | Title | Source | fig/tab/eq | recall | order | issues |
+| --- | --- | --- | :---: | ---: | ---: | ---: |
+| `dust_pretraining_transformers_without_backpropagation` | Dust: Pretraining Transformers Without Backpropagation | [page 1](https://qlabs.sh/research/dust) · [page 2](https://qlabs.sh/research/dust/appendix.html) | 7/8/5 | 0.966 | 1.000 | 0 |

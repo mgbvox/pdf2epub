@@ -15,6 +15,15 @@ regression against the baseline.
     python tools/corpus_gate.py --update        # accept: rewrite EPUBs + baselines (refuses on regressions)
     python tools/corpus_gate.py --add 2505.19056.pdf [--arxiv 2505.19056] [--title ... -a ...]
     python tools/corpus_gate.py --rescore       # metric change only: re-score the committed EPUBs
+    python tools/corpus_gate.py --add-web URL [URL ...] [--title ... -a ...]   # add a web article (demo/web/)
+
+Web articles (``pdf2epub web``) have their own section, ``demo/web/<name>.quality.json``:
+the URLs, options and quality baseline. The page snapshots (MHTML), the
+reference text and the accepted EPUB are third-party content, so they stay in
+the git-ignored cache ``.corpus/web/<name>/`` and are not published with this
+repository. The gate re-snapshots a page when the cache is empty; if the page
+itself has changed since the baseline (its text fingerprint differs) the entry
+is reported as ``SOURCE CHANGED`` instead of being compared.
 
 Policy: commit a code change only if this gate passes on every entry. When the
 change improves the corpus, run ``--update`` and commit the regenerated EPUBs
@@ -40,6 +49,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DEMO = ROOT / "demo"
+WEB = DEMO / "web"  # committed: manifests + baselines of web articles
+WEB_CACHE = ROOT / ".corpus" / "web"  # git-ignored: snapshots, reference text, accepted EPUBs
 sys.path.insert(0, str(ROOT / "src"))
 
 
@@ -93,6 +104,61 @@ def run_one(entry: dict, out_dir: str) -> dict:
     return {"name": entry["name"], "current": data, "epub": str(out), "issues": issues}
 
 
+def web_entries(names: list[str] | None = None) -> list[dict]:
+    out = []
+    for base in sorted(WEB.glob("*.quality.json")):
+        name = base.name[: -len(".quality.json")]
+        if names and not any(n == name or name.startswith(n) for n in names):
+            continue
+        data = json.loads(base.read_text())
+        out.append({"name": name, "kind": "web", "baseline": data, "options": data.get("options", {}), "urls": data.get("urls", [])})
+    return out
+
+
+def _fingerprint(text: str) -> str:
+    import hashlib
+
+    return hashlib.sha256(" ".join(text.split()).encode("utf-8")).hexdigest()[:16]
+
+
+def _snapshots(name: str, urls: list[str]) -> list[Path]:
+    """Cached MHTML snapshots of an entry's pages; captured from the live URLs when missing."""
+    from pdf2epub.web import snapshot_pages
+
+    paths = [WEB_CACHE / name / f"page-{i}.mhtml" for i in range(len(urls))]
+    missing = [(u, p) for u, p in zip(urls, paths) if not p.exists()]
+    if missing:
+        snapshot_pages([u for u, _ in missing], [p for _, p in missing])
+    return paths
+
+
+def run_web(entry: dict, out_dir: str) -> dict:
+    """Convert + evaluate one web entry from its snapshots (runs in a worker process)."""
+    from pdf2epub import quality
+    from pdf2epub.web import WebOptions, convert_web
+
+    opts = entry["options"]
+    snaps = entry.get("snapshots") or _snapshots(entry["name"], entry["urls"])
+    out = Path(out_dir) / f"{entry['name']}.epub"
+    rep = convert_web([p.as_uri() for p in snaps], out, WebOptions(
+        title=opts.get("title"), authors=opts.get("authors"), canonical_urls=entry["urls"]))
+    q = quality.evaluate_web(rep.reference_text, out)
+    data = q.to_json()
+    data.update(kind="web", urls=entry["urls"], options=opts, source={"pages": rep.pages, "title": rep.title},
+                source_fingerprint=_fingerprint(rep.reference_text))
+    issues = [f"[{i.kind}] {i.chapter}: {i.snippet}" for i in q.issues]
+    return {"name": entry["name"], "current": data, "epub": str(out), "issues": issues, "reference": rep.reference_text}
+
+
+def _accept_web(name: str, res: dict) -> None:
+    WEB.mkdir(parents=True, exist_ok=True)
+    (WEB / f"{name}.quality.json").write_text(json.dumps(res["current"], indent=2) + "\n")
+    cache = WEB_CACHE / name
+    cache.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(res["epub"], cache / "accepted.epub")
+    (cache / "reference.txt").write_text(res["reference"], encoding="utf-8")
+
+
 def write_index() -> None:
     rows = []
     for e in entries():
@@ -124,6 +190,24 @@ def write_index() -> None:
         "| --- | --- | --- | ---: | :---: | ---: | ---: | ---: |\n"
         + "\n".join(rows) + "\n"
     )
+    web_rows = []
+    for e in web_entries():
+        b = e["baseline"]
+        m, c = b.get("metrics", {}), b.get("counts", {})
+        title = b.get("source", {}).get("title", "").replace("|", "\\|")
+        links = " · ".join(f"[page {i + 1}]({u})" for i, u in enumerate(e["urls"]))
+        web_rows.append(f"| `{e['name']}` | {title} | {links} | {c.get('figures', 0)}/{c.get('tables', 0)}/{c.get('equations', 0)} "
+                        f"| {m.get('word_recall', 0):.3f} | {m.get('order_score', 0):.3f} | {sum(b.get('issue_counts', {}).values())} |")
+    if web_rows:
+        text += (
+            "\n## Web articles (`pdf2epub web`)\n\n"
+            "Baselines for the web converter live in [`web/`](web/): URLs, options and quality numbers only. The page\n"
+            "snapshots and EPUBs are third-party content and stay in the git-ignored cache `.corpus/web/`; the gate\n"
+            "re-snapshots a page when that cache is empty. recall is measured against the page's visible text.\n\n"
+            "| Name | Title | Source | fig/tab/eq | recall | order | issues |\n"
+            "| --- | --- | --- | :---: | ---: | ---: | ---: |\n"
+            + "\n".join(web_rows) + "\n"
+        )
     (DEMO / "README.md").write_text(text)
 
 
@@ -142,6 +226,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("-a", "--author", action="append")
     ap.add_argument("--index", action="store_true", help="only regenerate demo/README.md")
     ap.add_argument("--rescore", action="store_true", help="re-evaluate the committed EPUBs with the current metrics (no conversion)")
+    ap.add_argument("--add-web", nargs="+", metavar="URL", help="add a web article (several URLs: one book) to demo/web/")
+    ap.add_argument("--web-only", action="store_true", help="check only the web articles")
+    ap.add_argument("--pdf-only", action="store_true", help="check only the PDF papers")
     args = ap.parse_args(argv)
 
     from pdf2epub import quality
@@ -161,7 +248,43 @@ def main(argv: list[str] | None = None) -> int:
                   + " ".join(f"{k}={old.get('metrics', {}).get(k, 0):.4f}->{v:.4f}" for k, v in data["metrics"].items()
                              if abs(v - old.get("metrics", {}).get(k, 0)) > 1e-4))
             pdf.with_suffix(".quality.json").write_text(json.dumps(data, indent=2) + "\n")
+        for e in web_entries(args.names or None):
+            cache = WEB_CACHE / e["name"]
+            if not (cache / "accepted.epub").exists() or not (cache / "reference.txt").exists():
+                print(f"{e['name'][:40]:<40} skipped: no cached EPUB/reference (run the gate once to rebuild the cache)")
+                continue
+            data = quality.evaluate_web((cache / "reference.txt").read_text(encoding="utf-8"), cache / "accepted.epub").to_json()
+            for key in ("kind", "urls", "options", "source", "source_fingerprint"):
+                if key in e["baseline"]:
+                    data[key] = e["baseline"][key]
+            (WEB / f"{e['name']}.quality.json").write_text(json.dumps(data, indent=2) + "\n")
+            print(f"{e['name'][:40]:<40} rescored")
         write_index()
+        return 0
+    if args.add_web:
+        from pdf2epub.naming import paper_stem
+        from pdf2epub.web import snapshot_pages
+
+        opts = {k: v for k, v in (("title", args.title), ("authors", args.author)) if v}
+        tmp = Path(tempfile.mkdtemp(prefix="pdf2epub-addweb-"))
+        try:
+            snaps = [tmp / f"page-{i}.mhtml" for i in range(len(args.add_web))]
+            snapshot_pages(args.add_web, snaps)
+            res = run_web({"name": "new", "urls": args.add_web, "options": opts, "snapshots": snaps}, str(tmp))
+            name = args.name or paper_stem(res["current"]["source"]["title"], None)
+            if (WEB / f"{name}.quality.json").exists():
+                print(f"demo/web/{name} already exists")
+                return 1
+            cache = WEB_CACHE / name
+            cache.mkdir(parents=True, exist_ok=True)
+            for p in snaps:
+                shutil.copyfile(p, cache / p.name)
+            _accept_web(name, res)
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)
+        write_index()
+        print(f"added demo/web/{name}.quality.json (snapshots and EPUB cached in .corpus/web/{name}/): "
+              + json.dumps(res["current"]["metrics"]) + f" issues={sum(res['current']['issue_counts'].values())}")
         return 0
     if args.add:
         from pdf2epub.naming import arxiv_id, paper_stem
@@ -196,9 +319,10 @@ def main(argv: list[str] | None = None) -> int:
               + f" issues={sum(res['current']['issue_counts'].values())}")
         return 0
 
-    todo = entries(args.names or None)
+    todo = [] if args.web_only else entries(args.names or None)
+    todo += [] if args.pdf_only else web_entries(args.names or None)
     if args.names:
-        unknown = [n for n in args.names if not any(_selected(e["name"], [n]) for e in todo)]
+        unknown = [n for n in args.names if not any(_selected(e["name"], [n]) or e["name"].startswith(n) for e in todo)]
         if unknown:
             print("no corpus entry matches: " + ", ".join(unknown) + " (use an arXiv id or a full name from demo/)")
             return 2
@@ -206,7 +330,7 @@ def main(argv: list[str] | None = None) -> int:
     results = []
     try:
         with ProcessPoolExecutor(max_workers=max(1, args.jobs)) as pool:
-            futures = {e["name"]: (e, pool.submit(run_one, e, str(tmp))) for e in todo}
+            futures = {e["name"]: (e, pool.submit(run_web if e.get("kind") == "web" else run_one, e, str(tmp))) for e in todo}
             for name, (e, fut) in futures.items():
                 try:
                     results.append((e, fut.result()))
@@ -216,14 +340,18 @@ def main(argv: list[str] | None = None) -> int:
         for e, res in results:
             if "error" in res:
                 n_reg += 1
-                print(f"{_label(e['name']):<14} CRASHED    {res['error']}")
+                print(f"{_label(e['name'])[:14]:<14} CRASHED    {res['error']}")
                 continue
             base, cur = e["baseline"], res["current"]
+            if e.get("kind") == "web" and base.get("source_fingerprint") and base["source_fingerprint"] != cur.get("source_fingerprint"):
+                # the live page changed since the baseline: numbers are not comparable
+                print(f"{e['name'][:14]:<14} SOURCE CHANGED  the page differs from the baseline's; review it, then --update")
+                continue
             regs = quality.compare(base, cur) if base.get("metrics") else []
             imps = quality.improvements(base, cur) if base.get("metrics") else ["(no baseline)"]
             n_reg += len(regs)
             status = "REGRESSED" if regs else ("improved" if imps else "same")
-            print(f"{_label(e['name']):<14} {status:<10} " + " ".join(f"{k.split('_')[0][:4]}{k.split('_')[1][:3]}={v:.4f}" for k, v in cur["metrics"].items())
+            print(f"{(_label(e['name']) if e.get('kind') != 'web' else e['name'][:14]):<14} {status:<10} " + " ".join(f"{k.split('_')[0][:4]}{k.split('_')[1][:3]}={v:.4f}" for k, v in cur["metrics"].items())
                   + f" issues={sum(cur['issue_counts'].values())}")
             for r in regs:
                 print(f"    - {r}")
@@ -241,6 +369,9 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             for e, res in results:
                 if "error" in res:
+                    continue
+                if e.get("kind") == "web":
+                    _accept_web(e["name"], res)
                     continue
                 pdf = Path(e["pdf"])
                 shutil.copyfile(res["epub"], pdf.with_suffix(".epub"))
